@@ -19,6 +19,8 @@ export class OpenAIProvider extends LLMProvider {
     }
 
     async call(systemInstruction: string, userPayload: string): Promise<string> {
+        console.log(`[OpenAI] Starting call with model: ${this.model}`);
+        const startTime = Date.now();
         const response = await this.client.chat.completions.create({
             model: this.model,
             temperature: this.temperature,
@@ -27,6 +29,8 @@ export class OpenAIProvider extends LLMProvider {
                 { role: "user", content: userPayload },
             ],
         });
+        const elapsed = Date.now() - startTime;
+        console.log(`[OpenAI] Completed in ${elapsed}ms`);
         return response.choices[0].message.content || "";
     }
 }
@@ -44,6 +48,9 @@ export class GeminiProvider extends LLMProvider {
     }
 
     async call(systemInstruction: string, userPayload: string): Promise<string> {
+        console.log(`[Gemini] Starting call with model: ${this.model}`);
+        const startTime = Date.now();
+        
         const model = this.genAI.getGenerativeModel({
             model: this.model,
             systemInstruction,
@@ -60,6 +67,8 @@ export class GeminiProvider extends LLMProvider {
             ],
         });
 
+        const elapsed = Date.now() - startTime;
+        console.log(`[Gemini] Completed in ${elapsed}ms`);
         return result.response.text();
     }
 }

@@ -81,34 +81,61 @@ export class TaskOrchestrator {
 
     constructor(config: IntelligenceConfig) {
         this.gemini = new GeminiProvider(config.geminiModel || "gemini-3-pro-preview", config.temperature || 0.2);
-        this.openai = new OpenAIProvider(config.openaiModel || "gpt-4o", config.temperature || 0.2);
+        this.openai = new OpenAIProvider(config.openaiModel || "gpt-5.2", config.temperature || 0.2);
     }
 
-    async orchestrate(objective: string): Promise<AdminTask[]> {
-        // Use Duel-Core: Gemini generates initial draft, OpenAI refines it
-        const draftResponse = await this.gemini.call(ORCHESTRATOR_SYSTEM, `Objective: ${objective}`);
+    async orchestrate(objective: string, maxRounds: number = 5): Promise<AdminTask[]> {
+        const CRITIQUE_PROMPT = `
+You are a ruthless executive strategist. Review the following task breakdown and ATTACK it:
+1. Find weak reasoning, vague instructions, missing edge cases
+2. Challenge role assignments - is this REALLY the right C-level owner?
+3. Demand more specific, actionable steps
+4. Call out any fluff or corporate BS
+5. Rewrite the ENTIRE JSON with your improvements
 
-        const refinementPrompt = `
-        You are a Senior Executive Auditor. Review the following draft tasks for accuracy, role alignment, and actionability.
-        Ensure 'agentPrompt' fields are extremely detailed and expert-level.
-        CRITICAL: Ensure 'instructions', 'steps', and 'challenges' are populated for EVERY task.
-        Return the final refined JSON array of AdminTask objects.
+If the tasks are already perfect and you cannot improve them further, respond with "[CONVERGED]" followed by the final JSON.
+
+Current Tasks:
+`;
+
+        let currentResponse = "";
+        let lastResponse = "";
         
-        Draft Tasks:
-        ${draftResponse}
-        `;
+        // Round 1: Gemini generates initial draft
+        console.log(`[Duel] Round 1/5: Gemini drafting...`);
+        currentResponse = await this.gemini.call(ORCHESTRATOR_SYSTEM, `Objective: ${objective}`);
+        
+        // Rounds 2-5: Alternating critique and refinement
+        for (let round = 2; round <= maxRounds; round++) {
+            const isGeminiTurn = round % 2 === 0;
+            const attacker = isGeminiTurn ? this.openai : this.gemini;
+            const attackerName = isGeminiTurn ? "OpenAI" : "Gemini";
+            
+            console.log(`[Duel] Round ${round}/${maxRounds}: ${attackerName} attacking...`);
+            
+            lastResponse = currentResponse;
+            currentResponse = await attacker.call(
+                ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT,
+                currentResponse
+            );
+            
+            // Check for convergence
+            if (currentResponse.toUpperCase().includes("[CONVERGED]")) {
+                console.log(`[Duel] Converged at round ${round}`);
+                break;
+            }
+        }
 
-        const refinedResponse = await this.openai.call(ORCHESTRATOR_SYSTEM, refinementPrompt);
-
+        // Extract final JSON
         try {
-            const jsonMatch = refinedResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            const jsonMatch = currentResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
             if (jsonMatch) {
                 return JSON.parse(jsonMatch[0]);
             }
-            // Fallback to draft if refinement fails to produce JSON
-            const draftMatch = draftResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
-            if (draftMatch) {
-                return JSON.parse(draftMatch[0]);
+            // Fallback to last response if current fails
+            const lastMatch = lastResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            if (lastMatch) {
+                return JSON.parse(lastMatch[0]);
             }
             throw new Error("Failed to generate valid task JSON");
         } catch (error) {

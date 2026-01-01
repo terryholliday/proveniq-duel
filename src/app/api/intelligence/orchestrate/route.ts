@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
         const defaultConfig: IntelligenceConfig = {
             geminiModel: "gemini-3-pro-preview",
-            openaiModel: "gpt-4o",
+            openaiModel: "gpt-5.2",
             temperature: 0.7,
             maxIterations: 1,
             ...config,
