@@ -43,19 +43,14 @@ Return your analysis in this JSON format:
 `;
 
 export class Refinery {
-    private config: Required<IntelligenceConfig>;
+    private config: IntelligenceConfig;
     private gemini: GeminiProvider;
     private openai: OpenAIProvider;
 
     constructor(config: IntelligenceConfig) {
-        this.config = {
-            geminiModel: config.geminiModel ?? "gemini-3-pro-preview",
-            openaiModel: config.openaiModel ?? "gpt-4o",
-            temperature: config.temperature ?? 0.2,
-            maxIterations: config.maxIterations ?? 3,
-        };
-        this.gemini = new GeminiProvider(this.config.geminiModel, this.config.temperature);
-        this.openai = new OpenAIProvider(this.config.openaiModel, this.config.temperature);
+        this.config = config;
+        this.gemini = new GeminiProvider(config.geminiModel, config.temperature);
+        this.openai = new OpenAIProvider(config.openaiModel, config.temperature);
     }
 
     private extractCodeBlock(text: string): { code: string; isFenced: boolean } {
