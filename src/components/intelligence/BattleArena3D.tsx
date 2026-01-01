@@ -14,194 +14,299 @@ interface BattleArena3DProps {
     elapsedTime: number;
 }
 
-// Gemini Fighter - Blue/Cyan crystalline entity
+// Gemini Fighter - Crystalline energy being
 function GeminiFighter({ isAttacking, isHit, score }: { isAttacking: boolean; isHit: boolean; score: number }) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const glowRef = useRef<THREE.Mesh>(null);
+    const groupRef = useRef<THREE.Group>(null);
+    const coreRef = useRef<THREE.Mesh>(null);
+    const shieldRef = useRef<THREE.Mesh>(null);
     const [hitFlash, setHitFlash] = useState(false);
+    const [attackPulse, setAttackPulse] = useState(0);
 
     useEffect(() => {
         if (isHit) {
             setHitFlash(true);
-            setTimeout(() => setHitFlash(false), 200);
+            setTimeout(() => setHitFlash(false), 300);
         }
     }, [isHit]);
 
+    useEffect(() => {
+        if (isAttacking) {
+            setAttackPulse(1);
+            const timer = setTimeout(() => setAttackPulse(0), 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isAttacking]);
+
     useFrame((state) => {
-        if (!meshRef.current) return;
+        if (!groupRef.current) return;
         const t = state.clock.elapsedTime;
         
-        // Idle floating animation
-        meshRef.current.position.y = Math.sin(t * 2) * 0.1;
-        meshRef.current.rotation.y = Math.sin(t * 0.5) * 0.2;
+        // Idle floating
+        groupRef.current.position.y = Math.sin(t * 2) * 0.15;
         
         // Attack lunge
         if (isAttacking) {
-            meshRef.current.position.x = -2.5 + Math.sin(t * 15) * 0.8;
-            meshRef.current.rotation.z = Math.sin(t * 20) * 0.3;
+            groupRef.current.position.x = -2.5 + Math.sin(t * 12) * 1.2;
+            groupRef.current.scale.setScalar(1 + Math.sin(t * 20) * 0.15);
         } else {
-            meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, -2.5, 0.1);
-            meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, 0, 0.1);
+            groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, -2.5, 0.08);
+            groupRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
         }
 
         // Hit recoil
         if (hitFlash) {
-            meshRef.current.position.x = -3;
+            groupRef.current.position.x = -3.2;
+            groupRef.current.rotation.z = Math.sin(t * 50) * 0.4;
+        } else {
+            groupRef.current.rotation.z = THREE.MathUtils.lerp(groupRef.current.rotation.z, 0, 0.1);
         }
 
-        // Glow pulse
-        if (glowRef.current) {
-            const scale = 1.2 + Math.sin(t * 3) * 0.1;
-            glowRef.current.scale.setScalar(scale);
+        // Core rotation
+        if (coreRef.current) {
+            coreRef.current.rotation.x = t * 0.5;
+            coreRef.current.rotation.y = t * 0.7;
+        }
+
+        // Shield pulse
+        if (shieldRef.current) {
+            const pulse = 1 + Math.sin(t * 4) * 0.1 + attackPulse * 0.3;
+            shieldRef.current.scale.setScalar(pulse);
+            shieldRef.current.rotation.z = t * 0.3;
         }
     });
 
     return (
-        <group position={[-2.5, 0, 0]}>
-            {/* Core body */}
-            <mesh ref={meshRef}>
-                <icosahedronGeometry args={[0.6, 2]} />
-                <MeshDistortMaterial
-                    color={hitFlash ? "#ff0000" : "#00d4ff"}
-                    emissive={hitFlash ? "#ff0000" : "#0066ff"}
-                    emissiveIntensity={isAttacking ? 2 : 0.8}
-                    distort={isAttacking ? 0.6 : 0.3}
-                    speed={isAttacking ? 8 : 3}
-                    roughness={0.1}
+        <group ref={groupRef} position={[-2.5, 0, 0]}>
+            {/* Core crystal */}
+            <mesh ref={coreRef}>
+                <octahedronGeometry args={[0.5, 0]} />
+                <meshStandardMaterial
+                    color={hitFlash ? "#ff3333" : "#00d4ff"}
+                    emissive={hitFlash ? "#ff0000" : "#0099ff"}
+                    emissiveIntensity={isAttacking ? 3 : 1.5}
                     metalness={0.9}
+                    roughness={0.1}
                 />
             </mesh>
-            
-            {/* Outer glow */}
-            <mesh ref={glowRef} scale={1.2}>
-                <icosahedronGeometry args={[0.6, 1]} />
-                <meshBasicMaterial color="#00d4ff" transparent opacity={0.15} wireframe />
+
+            {/* Inner glow sphere */}
+            <mesh scale={1.3}>
+                <sphereGeometry args={[0.5, 32, 32]} />
+                <meshBasicMaterial
+                    color="#00d4ff"
+                    transparent
+                    opacity={isAttacking ? 0.4 : 0.2}
+                />
             </mesh>
 
-            {/* Energy rings */}
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <torusGeometry args={[0.9, 0.02, 16, 64]} />
-                <meshBasicMaterial color="#00ffff" transparent opacity={0.6} />
+            {/* Outer shield */}
+            <mesh ref={shieldRef} scale={1.5}>
+                <icosahedronGeometry args={[0.5, 1]} />
+                <meshStandardMaterial
+                    color="#00d4ff"
+                    emissive="#0066ff"
+                    emissiveIntensity={0.5}
+                    transparent
+                    opacity={0.3}
+                    wireframe
+                />
             </mesh>
-            <mesh rotation={[Math.PI / 3, Math.PI / 4, 0]}>
-                <torusGeometry args={[0.85, 0.015, 16, 64]} />
-                <meshBasicMaterial color="#0088ff" transparent opacity={0.4} />
-            </mesh>
+
+            {/* Energy blades */}
+            {[0, 1, 2, 3].map((i) => (
+                <mesh
+                    key={i}
+                    rotation={[0, 0, (Math.PI / 2) * i]}
+                    position={[Math.cos((Math.PI / 2) * i) * 0.8, Math.sin((Math.PI / 2) * i) * 0.8, 0]}
+                >
+                    <boxGeometry args={[0.1, 0.6, 0.05]} />
+                    <meshStandardMaterial
+                        color="#00ffff"
+                        emissive="#00ffff"
+                        emissiveIntensity={isAttacking ? 2 : 1}
+                        transparent
+                        opacity={0.8}
+                    />
+                </mesh>
+            ))}
 
             {/* Score indicator */}
-            <Html position={[0, 1.4, 0]} center distanceFactor={8}>
+            <Html position={[0, 1.6, 0]} center distanceFactor={8}>
                 <div className="text-center pointer-events-none select-none">
-                    <div className="text-[10px] text-cyan-400 font-bold tracking-widest">GEMINI</div>
-                    <div className="text-2xl font-black text-cyan-300">{score}</div>
+                    <div className="text-[10px] text-cyan-400 font-bold tracking-widest mb-1">GEMINI</div>
+                    <div className="text-3xl font-black text-cyan-300 drop-shadow-[0_0_8px_rgba(0,212,255,0.8)]">{score}</div>
                 </div>
             </Html>
 
-            {/* Attack trail particles */}
+            {/* Attack particles */}
             {isAttacking && (
-                <Sparkles
-                    count={30}
-                    scale={2}
-                    size={3}
-                    speed={2}
-                    color="#00ffff"
-                />
+                <>
+                    <Sparkles
+                        count={50}
+                        scale={3}
+                        size={4}
+                        speed={3}
+                        color="#00ffff"
+                    />
+                    <pointLight position={[0, 0, 0]} intensity={3} color="#00d4ff" distance={5} />
+                </>
             )}
+
+            {/* Ambient glow */}
+            <pointLight position={[0, 0, 0]} intensity={isAttacking ? 2 : 1} color="#00d4ff" distance={3} />
         </group>
     );
 }
 
-// OpenAI Fighter - Green/Emerald organic entity
+// OpenAI Fighter - Neural network entity
 function OpenAIFighter({ isAttacking, isHit, score }: { isAttacking: boolean; isHit: boolean; score: number }) {
-    const meshRef = useRef<THREE.Mesh>(null);
-    const glowRef = useRef<THREE.Mesh>(null);
+    const groupRef = useRef<THREE.Group>(null);
+    const coreRef = useRef<THREE.Mesh>(null);
+    const orbitalsRef = useRef<THREE.Group>(null);
     const [hitFlash, setHitFlash] = useState(false);
+    const [attackPulse, setAttackPulse] = useState(0);
 
     useEffect(() => {
         if (isHit) {
             setHitFlash(true);
-            setTimeout(() => setHitFlash(false), 200);
+            setTimeout(() => setHitFlash(false), 300);
         }
     }, [isHit]);
 
+    useEffect(() => {
+        if (isAttacking) {
+            setAttackPulse(1);
+            const timer = setTimeout(() => setAttackPulse(0), 500);
+            return () => clearTimeout(timer);
+        }
+    }, [isAttacking]);
+
     useFrame((state) => {
-        if (!meshRef.current) return;
+        if (!groupRef.current) return;
         const t = state.clock.elapsedTime;
         
-        // Idle floating animation
-        meshRef.current.position.y = Math.sin(t * 2 + Math.PI) * 0.1;
-        meshRef.current.rotation.y = Math.sin(t * 0.5 + Math.PI) * 0.2 + Math.PI;
+        // Idle floating
+        groupRef.current.position.y = Math.sin(t * 2 + Math.PI) * 0.15;
         
         // Attack lunge
         if (isAttacking) {
-            meshRef.current.position.x = 2.5 - Math.sin(t * 15) * 0.8;
-            meshRef.current.rotation.z = -Math.sin(t * 20) * 0.3;
+            groupRef.current.position.x = 2.5 - Math.sin(t * 12) * 1.2;
+            groupRef.current.scale.setScalar(1 + Math.sin(t * 20) * 0.15);
         } else {
-            meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, 2.5, 0.1);
-            meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, 0, 0.1);
+            groupRef.current.position.x = THREE.MathUtils.lerp(groupRef.current.position.x, 2.5, 0.08);
+            groupRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
         }
 
         // Hit recoil
         if (hitFlash) {
-            meshRef.current.position.x = 3;
+            groupRef.current.position.x = 3.2;
+            groupRef.current.rotation.z = Math.sin(t * 50) * 0.4;
+        } else {
+            groupRef.current.rotation.z = THREE.MathUtils.lerp(groupRef.current.rotation.z, 0, 0.1);
         }
 
-        // Glow pulse
-        if (glowRef.current) {
-            const scale = 1.2 + Math.sin(t * 3 + Math.PI) * 0.1;
-            glowRef.current.scale.setScalar(scale);
+        // Core rotation
+        if (coreRef.current) {
+            coreRef.current.rotation.x = -t * 0.6;
+            coreRef.current.rotation.y = t * 0.4;
+        }
+
+        // Orbital rotation
+        if (orbitalsRef.current) {
+            orbitalsRef.current.rotation.y = t * 1.5;
+            orbitalsRef.current.rotation.z = Math.sin(t * 2) * 0.3;
         }
     });
 
     return (
-        <group position={[2.5, 0, 0]}>
-            {/* Core body */}
-            <mesh ref={meshRef}>
-                <dodecahedronGeometry args={[0.55, 1]} />
-                <MeshDistortMaterial
-                    color={hitFlash ? "#ff0000" : "#10b981"}
+        <group ref={groupRef} position={[2.5, 0, 0]}>
+            {/* Core sphere */}
+            <mesh ref={coreRef}>
+                <sphereGeometry args={[0.45, 32, 32]} />
+                <meshStandardMaterial
+                    color={hitFlash ? "#ff3333" : "#10b981"}
                     emissive={hitFlash ? "#ff0000" : "#059669"}
-                    emissiveIntensity={isAttacking ? 2 : 0.8}
-                    distort={isAttacking ? 0.5 : 0.25}
-                    speed={isAttacking ? 6 : 2}
-                    roughness={0.2}
+                    emissiveIntensity={isAttacking ? 3 : 1.5}
                     metalness={0.8}
+                    roughness={0.2}
                 />
             </mesh>
-            
-            {/* Outer glow */}
-            <mesh ref={glowRef} scale={1.2}>
-                <dodecahedronGeometry args={[0.55, 0]} />
-                <meshBasicMaterial color="#10b981" transparent opacity={0.15} wireframe />
+
+            {/* Inner energy */}
+            <mesh scale={1.2}>
+                <sphereGeometry args={[0.45, 32, 32]} />
+                <meshBasicMaterial
+                    color="#10b981"
+                    transparent
+                    opacity={isAttacking ? 0.4 : 0.2}
+                />
             </mesh>
 
-            {/* Energy rings */}
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <torusGeometry args={[0.85, 0.02, 16, 64]} />
-                <meshBasicMaterial color="#34d399" transparent opacity={0.6} />
-            </mesh>
-            <mesh rotation={[Math.PI / 3, -Math.PI / 4, 0]}>
-                <torusGeometry args={[0.8, 0.015, 16, 64]} />
-                <meshBasicMaterial color="#10b981" transparent opacity={0.4} />
-            </mesh>
+            {/* Orbital rings */}
+            <group ref={orbitalsRef}>
+                {[0, 1, 2].map((i) => (
+                    <mesh
+                        key={i}
+                        rotation={[Math.PI / 3 * i, Math.PI / 4 * i, 0]}
+                    >
+                        <torusGeometry args={[0.9, 0.04, 16, 64]} />
+                        <meshStandardMaterial
+                            color="#34d399"
+                            emissive="#10b981"
+                            emissiveIntensity={isAttacking ? 1.5 : 0.8}
+                            transparent
+                            opacity={0.7}
+                        />
+                    </mesh>
+                ))}
+            </group>
+
+            {/* Neural nodes */}
+            {[0, 1, 2, 3, 4, 5].map((i) => {
+                const angle = (Math.PI * 2 / 6) * i;
+                return (
+                    <mesh
+                        key={i}
+                        position={[
+                            Math.cos(angle) * 1.1,
+                            Math.sin(angle) * 1.1,
+                            0
+                        ]}
+                    >
+                        <sphereGeometry args={[0.08, 16, 16]} />
+                        <meshStandardMaterial
+                            color="#34d399"
+                            emissive="#34d399"
+                            emissiveIntensity={isAttacking ? 2 : 1}
+                        />
+                    </mesh>
+                );
+            })}
 
             {/* Score indicator */}
-            <Html position={[0, 1.4, 0]} center distanceFactor={8}>
+            <Html position={[0, 1.6, 0]} center distanceFactor={8}>
                 <div className="text-center pointer-events-none select-none">
-                    <div className="text-[10px] text-emerald-400 font-bold tracking-widest">GPT-5</div>
-                    <div className="text-2xl font-black text-emerald-300">{score}</div>
+                    <div className="text-[10px] text-emerald-400 font-bold tracking-widest mb-1">GPT-5</div>
+                    <div className="text-3xl font-black text-emerald-300 drop-shadow-[0_0_8px_rgba(16,185,129,0.8)]">{score}</div>
                 </div>
             </Html>
 
-            {/* Attack trail particles */}
+            {/* Attack particles */}
             {isAttacking && (
-                <Sparkles
-                    count={30}
-                    scale={2}
-                    size={3}
-                    speed={2}
-                    color="#34d399"
-                />
+                <>
+                    <Sparkles
+                        count={50}
+                        scale={3}
+                        size={4}
+                        speed={3}
+                        color="#34d399"
+                    />
+                    <pointLight position={[0, 0, 0]} intensity={3} color="#10b981" distance={5} />
+                </>
             )}
+
+            {/* Ambient glow */}
+            <pointLight position={[0, 0, 0]} intensity={isAttacking ? 2 : 1} color="#10b981" distance={3} />
         </group>
     );
 }
@@ -209,58 +314,98 @@ function OpenAIFighter({ isAttacking, isHit, score }: { isAttacking: boolean; is
 // Central battle zone with clash effects
 function BattleZone({ isClashing, round }: { isClashing: boolean; round: number }) {
     const ringRef = useRef<THREE.Mesh>(null);
+    const gridRef = useRef<THREE.Mesh>(null);
     const clashRef = useRef<THREE.Mesh>(null);
 
     useFrame((state) => {
         const t = state.clock.elapsedTime;
         
         if (ringRef.current) {
-            ringRef.current.rotation.z = t * 0.5;
+            ringRef.current.rotation.z = t * 0.3;
+        }
+        
+        if (gridRef.current && gridRef.current.material && 'opacity' in gridRef.current.material) {
+            (gridRef.current.material as THREE.MeshBasicMaterial).opacity = 0.15 + Math.sin(t * 2) * 0.05;
         }
         
         if (clashRef.current && isClashing) {
-            clashRef.current.scale.setScalar(1 + Math.sin(t * 20) * 0.3);
-            clashRef.current.rotation.z = t * 5;
+            clashRef.current.scale.setScalar(1 + Math.sin(t * 25) * 0.5);
+            clashRef.current.rotation.x = t * 8;
+            clashRef.current.rotation.y = t * 6;
         }
     });
 
     return (
         <group position={[0, 0, 0]}>
-            {/* Arena floor ring */}
-            <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]} position={[0, -1.5, 0]}>
-                <ringGeometry args={[3, 3.2, 64]} />
-                <meshBasicMaterial color="#334155" transparent opacity={0.5} side={THREE.DoubleSide} />
+            {/* Arena floor */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -1.5, 0]}>
+                <circleGeometry args={[3.5, 64]} />
+                <meshStandardMaterial
+                    color="#0f172a"
+                    metalness={0.8}
+                    roughness={0.2}
+                    emissive="#1e293b"
+                    emissiveIntensity={0.2}
+                />
             </mesh>
             
-            {/* Inner ring */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -1.5, 0]}>
-                <ringGeometry args={[2.8, 2.85, 64]} />
-                <meshBasicMaterial color="#475569" transparent opacity={0.3} side={THREE.DoubleSide} />
+            {/* Grid overlay */}
+            <mesh ref={gridRef} rotation={[Math.PI / 2, 0, 0]} position={[0, -1.49, 0]}>
+                <ringGeometry args={[0.5, 3.5, 64, 8]} />
+                <meshBasicMaterial color="#475569" transparent opacity={0.15} side={THREE.DoubleSide} wireframe />
+            </mesh>
+            
+            {/* Outer ring */}
+            <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]} position={[0, -1.48, 0]}>
+                <ringGeometry args={[3.3, 3.5, 64]} />
+                <meshStandardMaterial
+                    color="#64748b"
+                    emissive="#475569"
+                    emissiveIntensity={0.5}
+                    transparent
+                    opacity={0.6}
+                />
             </mesh>
 
-            {/* Clash effect */}
+            {/* Center clash effect */}
             {isClashing && (
-                <mesh ref={clashRef}>
-                    <octahedronGeometry args={[0.3, 0]} />
-                    <meshBasicMaterial color="#fbbf24" transparent opacity={0.8} />
-                </mesh>
+                <>
+                    <mesh ref={clashRef}>
+                        <octahedronGeometry args={[0.4, 0]} />
+                        <meshStandardMaterial
+                            color="#fbbf24"
+                            emissive="#fbbf24"
+                            emissiveIntensity={3}
+                            transparent
+                            opacity={0.9}
+                        />
+                    </mesh>
+                    <pointLight position={[0, 0, 0]} intensity={8} color="#fbbf24" distance={6} />
+                    <Sparkles
+                        count={80}
+                        scale={2}
+                        size={6}
+                        speed={4}
+                        color="#fbbf24"
+                    />
+                </>
             )}
 
             {/* Round indicator */}
             <Html position={[0, -1.2, 0]} center distanceFactor={10}>
-                <div className="text-zinc-500 font-bold text-lg tracking-widest pointer-events-none select-none">
+                <div className="text-zinc-400 font-black text-2xl tracking-[0.3em] pointer-events-none select-none drop-shadow-[0_0_10px_rgba(100,116,139,0.5)]">
                     {round > 0 ? `ROUND ${round}` : "READY"}
                 </div>
             </Html>
 
             {/* Ambient particles */}
             <Sparkles
-                count={100}
-                scale={8}
-                size={1}
-                speed={0.3}
+                count={150}
+                scale={10}
+                size={1.5}
+                speed={0.2}
                 color="#475569"
-                opacity={0.3}
+                opacity={0.4}
             />
         </group>
     );
@@ -269,12 +414,20 @@ function BattleZone({ isClashing, round }: { isClashing: boolean; round: number 
 // Energy beam attack effect
 function EnergyBeam({ from, to, color, active }: { from: [number, number, number]; to: [number, number, number]; color: string; active: boolean }) {
     const beamRef = useRef<THREE.Mesh>(null);
+    const coreRef = useRef<THREE.Mesh>(null);
     
     useFrame((state) => {
-        if (!beamRef.current || !active) return;
+        if (!active) return;
         const t = state.clock.elapsedTime;
-        beamRef.current.scale.x = 0.5 + Math.sin(t * 30) * 0.3;
-        beamRef.current.scale.y = 0.5 + Math.sin(t * 30) * 0.3;
+        
+        if (beamRef.current) {
+            beamRef.current.scale.y = 0.8 + Math.sin(t * 25) * 0.4;
+            beamRef.current.scale.z = 0.8 + Math.sin(t * 25) * 0.4;
+        }
+        
+        if (coreRef.current) {
+            coreRef.current.scale.setScalar(1.5 + Math.sin(t * 30) * 0.5);
+        }
     });
 
     if (!active) return null;
@@ -287,21 +440,36 @@ function EnergyBeam({ from, to, color, active }: { from: [number, number, number
 
     return (
         <group position={[mid.x, mid.y, mid.z]} rotation={[0, 0, angle]}>
-            <mesh ref={beamRef}>
-                <cylinderGeometry args={[0.05, 0.05, length, 8]} />
-                <meshBasicMaterial color={color} transparent opacity={0.8} />
+            {/* Core beam */}
+            <mesh ref={beamRef} rotation={[0, Math.PI / 2, 0]}>
+                <cylinderGeometry args={[0.08, 0.08, length, 16]} />
+                <meshStandardMaterial
+                    color={color}
+                    emissive={color}
+                    emissiveIntensity={2}
+                    transparent
+                    opacity={0.9}
+                />
             </mesh>
-            <Trail
-                width={0.5}
-                length={4}
-                color={color}
-                attenuation={(t) => t * t}
-            >
-                <mesh position={[length / 2, 0, 0]}>
-                    <sphereGeometry args={[0.1, 8, 8]} />
-                    <meshBasicMaterial color={color} />
-                </mesh>
-            </Trail>
+            
+            {/* Outer glow */}
+            <mesh rotation={[0, Math.PI / 2, 0]}>
+                <cylinderGeometry args={[0.15, 0.15, length, 16]} />
+                <meshBasicMaterial
+                    color={color}
+                    transparent
+                    opacity={0.3}
+                />
+            </mesh>
+            
+            {/* Impact point */}
+            <mesh ref={coreRef} position={[length / 2, 0, 0]}>
+                <sphereGeometry args={[0.15, 16, 16]} />
+                <meshBasicMaterial color="#ffffff" />
+            </mesh>
+            
+            {/* Beam light */}
+            <pointLight position={[0, 0, 0]} intensity={5} color={color} distance={3} />
         </group>
     );
 }
@@ -309,20 +477,38 @@ function EnergyBeam({ from, to, color, active }: { from: [number, number, number
 // Impact explosion effect
 function ImpactEffect({ position, active, color }: { position: [number, number, number]; active: boolean; color: string }) {
     const [scale, setScale] = useState(0);
+    const [rings, setRings] = useState<number[]>([]);
     
     useEffect(() => {
         if (active) {
             setScale(0);
+            setRings([]);
+            
             const interval = setInterval(() => {
                 setScale(s => {
-                    if (s >= 2) {
+                    if (s >= 3) {
                         clearInterval(interval);
                         return 0;
                     }
-                    return s + 0.2;
+                    return s + 0.3;
                 });
-            }, 30);
-            return () => clearInterval(interval);
+            }, 40);
+            
+            // Create expanding rings
+            const ringInterval = setInterval(() => {
+                setRings(r => {
+                    if (r.length >= 3) {
+                        clearInterval(ringInterval);
+                        return r;
+                    }
+                    return [...r, 0];
+                });
+            }, 100);
+            
+            return () => {
+                clearInterval(interval);
+                clearInterval(ringInterval);
+            };
         }
     }, [active]);
 
@@ -330,14 +516,32 @@ function ImpactEffect({ position, active, color }: { position: [number, number, 
 
     return (
         <group position={position}>
+            {/* Core explosion */}
             <mesh scale={scale}>
-                <sphereGeometry args={[0.3, 16, 16]} />
-                <meshBasicMaterial color={color} transparent opacity={1 - scale / 2} />
+                <sphereGeometry args={[0.4, 32, 32]} />
+                <meshBasicMaterial color={color} transparent opacity={Math.max(0, 1 - scale / 3)} />
             </mesh>
-            <mesh scale={scale * 0.7}>
-                <sphereGeometry args={[0.3, 16, 16]} />
-                <meshBasicMaterial color="#ffffff" transparent opacity={1 - scale / 2} />
+            
+            {/* Inner flash */}
+            <mesh scale={scale * 0.6}>
+                <sphereGeometry args={[0.4, 32, 32]} />
+                <meshBasicMaterial color="#ffffff" transparent opacity={Math.max(0, 1 - scale / 2)} />
             </mesh>
+            
+            {/* Shockwave rings */}
+            {rings.map((_, i) => (
+                <mesh key={i} scale={scale * (1 + i * 0.3)} rotation={[Math.PI / 2, 0, 0]}>
+                    <torusGeometry args={[0.5, 0.05, 16, 32]} />
+                    <meshBasicMaterial
+                        color={color}
+                        transparent
+                        opacity={Math.max(0, 0.6 - scale / 4)}
+                    />
+                </mesh>
+            ))}
+            
+            {/* Impact light */}
+            <pointLight intensity={10 * (1 - scale / 3)} color={color} distance={5} />
         </group>
     );
 }
