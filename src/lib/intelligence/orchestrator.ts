@@ -1,5 +1,5 @@
-import { GeminiProvider, LLMProvider, OpenAIProvider } from "./llm-providers";
-import { IntelligenceConfig } from "./types";
+import { GeminiProvider, OpenAIProvider } from "./llm-providers";
+import { IntelligenceConfig, DuelScorecard } from "./types";
 
 export interface AdminTask {
     id: string;
@@ -75,16 +75,70 @@ EXAMPLE OUTPUT:
 ]
 `;
 
+const TASK_SCORECARD_SYSTEM = `
+You are a TASK DUEL JUDGE. Two AI models (Gemini 3 and GPT-5.2) have created competing task breakdowns for a business objective.
+
+Analyze BOTH task lists and provide a detailed scorecard.
+
+SCORING CRITERIA:
+1. Completeness (covers all aspects of objective) - Up to 25 points
+2. Actionability (tasks are specific and executable) - Up to 25 points
+3. Role Assignment (correct C-level owners) - Up to 20 points
+4. Timeline Realism (due dates are achievable) - Up to 15 points
+5. Risk Awareness (challenges identified) - Up to 15 points
+
+Return your analysis in this EXACT JSON format:
+{
+  "geminiErrors": ["missing X", "vague Y"],
+  "openaiErrors": ["missing X", "vague Y"],
+  "geminiScore": <0-100>,
+  "openaiScore": <0-100>,
+  "agreements": ["Both assign X to CTO", "Both identify Y risk"],
+  "disagreements": ["Gemini assigns to CEO, OpenAI to COO", "Different timelines"],
+  "winner": "gemini" | "openai" | "tie",
+  "consensusReached": <boolean>,
+  "recommendedAction": "<suggestion for user>"
+}
+`;
+
+export interface OrchestratorIteration {
+    index: number;
+    provider: "gemini" | "openai";
+    tasks: AdminTask[];
+    rawResponse: string;
+    isConverged: boolean;
+}
+
 export class TaskOrchestrator {
     private gemini: GeminiProvider;
     private openai: OpenAIProvider;
+    private config: IntelligenceConfig;
 
     constructor(config: IntelligenceConfig) {
+        this.config = config;
         this.gemini = new GeminiProvider(config.geminiModel || "gemini-3-pro-preview", config.temperature || 0.2);
         this.openai = new OpenAIProvider(config.openaiModel || "gpt-5.2", config.temperature || 0.2);
     }
 
-    async orchestrate(objective: string, maxRounds: number = 5): Promise<AdminTask[]> {
+    private extractTasks(response: string): AdminTask[] {
+        try {
+            const jsonMatch = response.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            if (jsonMatch) {
+                return JSON.parse(jsonMatch[0]);
+            }
+            return [];
+        } catch {
+            return [];
+        }
+    }
+
+    async orchestrate(
+        objective: string, 
+        maxRounds: number = 5,
+        onUpdate?: (iteration: OrchestratorIteration) => void,
+        onScorecard?: (scorecard: DuelScorecard) => void
+    ): Promise<{ geminiTasks: AdminTask[]; openaiTasks: AdminTask[]; scorecard: DuelScorecard | null }> {
+        
         const CRITIQUE_PROMPT = `
 You are a ruthless executive strategist. Review the following task breakdown and ATTACK it:
 1. Find weak reasoning, vague instructions, missing edge cases
@@ -98,49 +152,121 @@ If the tasks are already perfect and you cannot improve them further, respond wi
 Current Tasks:
 `;
 
-        let currentResponse = "";
-        let lastResponse = "";
+        // ═══════════════════════════════════════════════════════════════
+        // PHASE 1, ROUND 1: Both models generate task breakdowns SIMULTANEOUSLY
+        // ═══════════════════════════════════════════════════════════════
+        console.log("[Orchestrator Duel] PHASE 1, ROUND 1: Both models generating task breakdowns!");
         
-        // Round 1: Gemini generates initial draft
-        console.log(`[Duel] Round 1/5: Gemini drafting...`);
-        currentResponse = await this.gemini.call(ORCHESTRATOR_SYSTEM, `Objective: ${objective}`);
+        const [geminiFirstResponse, openaiFirstResponse] = await Promise.all([
+            this.gemini.call(ORCHESTRATOR_SYSTEM, `Objective: ${objective}`),
+            this.openai.call(ORCHESTRATOR_SYSTEM, `Objective: ${objective}`)
+        ]);
         
-        // Rounds 2-5: Alternating critique and refinement
-        for (let round = 2; round <= maxRounds; round++) {
-            const isGeminiTurn = round % 2 === 0;
-            const attacker = isGeminiTurn ? this.openai : this.gemini;
-            const attackerName = isGeminiTurn ? "OpenAI" : "Gemini";
+        let geminiTasks = this.extractTasks(geminiFirstResponse);
+        let openaiTasks = this.extractTasks(openaiFirstResponse);
+        
+        if (onUpdate) {
+            onUpdate({ index: 0, provider: "gemini", tasks: geminiTasks, rawResponse: geminiFirstResponse, isConverged: false });
+            onUpdate({ index: 1, provider: "openai", tasks: openaiTasks, rawResponse: openaiFirstResponse, isConverged: false });
+        }
+        
+        // ═══════════════════════════════════════════════════════════════
+        // PHASE 1, ROUND 2: First attacks - they critique each other
+        // ═══════════════════════════════════════════════════════════════
+        console.log("[Orchestrator Duel] PHASE 1, ROUND 2: First attacks!");
+        
+        const [geminiAttack1, openaiAttack1] = await Promise.all([
+            this.gemini.call(ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT, JSON.stringify(openaiTasks, null, 2)),
+            this.openai.call(ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT, JSON.stringify(geminiTasks, null, 2))
+        ]);
+        
+        geminiTasks = this.extractTasks(geminiAttack1);
+        openaiTasks = this.extractTasks(openaiAttack1);
+        
+        if (onUpdate) {
+            onUpdate({ index: 2, provider: "gemini", tasks: geminiTasks, rawResponse: geminiAttack1, isConverged: geminiAttack1.toUpperCase().includes("[CONVERGED]") });
+            onUpdate({ index: 3, provider: "openai", tasks: openaiTasks, rawResponse: openaiAttack1, isConverged: openaiAttack1.toUpperCase().includes("[CONVERGED]") });
+        }
+        
+        // ═══════════════════════════════════════════════════════════════
+        // PHASE 2: DUEL - Rounds 3-5, continue attacking
+        // ═══════════════════════════════════════════════════════════════
+        console.log("[Orchestrator Duel] PHASE 2: THE DUEL CONTINUES!");
+        
+        let round = 4;
+        const maxIterations = maxRounds * 2 + 2;
+        
+        while (round < maxIterations) {
+            const [geminiAttackResponse, openaiAttackResponse] = await Promise.all([
+                this.gemini.call(ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT, JSON.stringify(openaiTasks, null, 2)),
+                this.openai.call(ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT, JSON.stringify(geminiTasks, null, 2))
+            ]);
             
-            console.log(`[Duel] Round ${round}/${maxRounds}: ${attackerName} attacking...`);
+            const geminiConverged = geminiAttackResponse.toUpperCase().includes("[CONVERGED]");
+            const openaiConverged = openaiAttackResponse.toUpperCase().includes("[CONVERGED]");
             
-            lastResponse = currentResponse;
-            currentResponse = await attacker.call(
-                ORCHESTRATOR_SYSTEM + CRITIQUE_PROMPT,
-                currentResponse
-            );
+            geminiTasks = this.extractTasks(geminiAttackResponse);
+            openaiTasks = this.extractTasks(openaiAttackResponse);
             
-            // Check for convergence
-            if (currentResponse.toUpperCase().includes("[CONVERGED]")) {
-                console.log(`[Duel] Converged at round ${round}`);
+            if (onUpdate) {
+                onUpdate({ index: round, provider: "gemini", tasks: geminiTasks, rawResponse: geminiAttackResponse, isConverged: geminiConverged });
+                onUpdate({ index: round + 1, provider: "openai", tasks: openaiTasks, rawResponse: openaiAttackResponse, isConverged: openaiConverged });
+            }
+            
+            round += 2;
+            
+            if (geminiConverged && openaiConverged) {
+                console.log("[Orchestrator Duel] BOTH models converged! CONSENSUS REACHED!");
                 break;
             }
         }
+        
+        // ═══════════════════════════════════════════════════════════════
+        // SCORING PHASE: Judge the task breakdowns
+        // ═══════════════════════════════════════════════════════════════
+        console.log("[Orchestrator Duel] SCORING PHASE: Judging the battle...");
+        
+        const scorecard = await this.generateScorecard(objective, geminiTasks, openaiTasks);
+        if (onScorecard) onScorecard(scorecard);
+        
+        return { geminiTasks, openaiTasks, scorecard };
+    }
+    
+    async generateScorecard(objective: string, geminiTasks: AdminTask[], openaiTasks: AdminTask[]): Promise<DuelScorecard> {
+        const prompt = `
+Original Objective:
+${objective}
 
-        // Extract final JSON
+=== GEMINI 3's TASK BREAKDOWN ===
+${JSON.stringify(geminiTasks, null, 2)}
+
+=== GPT-5.2's TASK BREAKDOWN ===
+${JSON.stringify(openaiTasks, null, 2)}
+
+Judge these two task breakdowns and provide the scorecard.
+`;
+        
+        const rawResponse = await this.gemini.call(TASK_SCORECARD_SYSTEM, prompt);
+        
         try {
-            const jsonMatch = currentResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
+            const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 return JSON.parse(jsonMatch[0]);
             }
-            // Fallback to last response if current fails
-            const lastMatch = lastResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
-            if (lastMatch) {
-                return JSON.parse(lastMatch[0]);
-            }
-            throw new Error("Failed to generate valid task JSON");
+            throw new Error("Invalid scorecard format");
         } catch (error) {
-            console.error("Orchestration failed:", error);
-            return [];
+            console.error("Scorecard generation failed:", error);
+            return {
+                geminiErrors: [],
+                openaiErrors: [],
+                geminiScore: 50,
+                openaiScore: 50,
+                agreements: ["Unable to parse detailed comparison"],
+                disagreements: ["Analysis failed"],
+                winner: "tie",
+                consensusReached: false,
+                recommendedAction: "Manual review recommended"
+            };
         }
     }
 }
