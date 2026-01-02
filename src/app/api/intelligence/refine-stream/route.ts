@@ -164,8 +164,6 @@ export async function POST(req: NextRequest) {
                         scores,
                         iteration
                     })}\n\n`));
-                }, (sc: DuelScorecard) => {
-                    scorecard = sc;
                 });
 
                 // Scoring phase - show scorecard
