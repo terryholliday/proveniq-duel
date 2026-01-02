@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target, Swords } from "lucide-react";
-import { Iteration, AdjudicationResult } from "@/lib/intelligence/types";
+import { Iteration, AdjudicationResult, DuelScorecard } from "@/lib/intelligence/types";
 import { AdminTask } from "@/lib/intelligence/orchestrator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
