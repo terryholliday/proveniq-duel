@@ -194,8 +194,8 @@ async function testCodeGeneration(): Promise<TestResults> {
     const allMetrics: LLMMetrics[] = [];
     
     try {
-        const gemini = new InstrumentedGemini('gemini-2.0-flash', 0.7);
-        const openai = new InstrumentedOpenAI('gpt-4o-mini', 0.7);
+        const gemini = new InstrumentedGemini('gemini-2.5-flash', 0.7);
+        const openai = new InstrumentedOpenAI('gpt-4o', 0.7);
         
         // Simulate refinery flow: Gemini generates, OpenAI reviews
         console.log('\n[Phase 1] Gemini generating initial code...');
@@ -253,8 +253,8 @@ async function testStrategyDebate(): Promise<TestResults> {
     const allMetrics: LLMMetrics[] = [];
     
     try {
-        const gemini = new InstrumentedGemini('gemini-2.0-flash', 0.7);
-        const openai = new InstrumentedOpenAI('gpt-4o-mini', 0.7);
+        const gemini = new InstrumentedGemini('gemini-2.5-flash', 0.7);
+        const openai = new InstrumentedOpenAI('gpt-4o', 0.7);
         
         const openerPrompt = `You are a strategic advisor participating in a high-stakes debate.
 Your goal is to provide the most insightful, robust, and actionable strategy for the user's topic.
@@ -325,8 +325,8 @@ async function testTaskOrchestration(): Promise<TestResults> {
     const allMetrics: LLMMetrics[] = [];
     
     try {
-        const gemini = new InstrumentedGemini('gemini-2.0-flash', 0.2);
-        const openai = new InstrumentedOpenAI('gpt-4o-mini', 0.2);
+        const gemini = new InstrumentedGemini('gemini-2.5-flash', 0.2);
+        const openai = new InstrumentedOpenAI('gpt-4o', 0.2);
         
         const orchestratorPrompt = `You are the PROVENIQ Business Logic Orchestrator. 
 Your goal is to take a high-level objective and break it down into actionable C-Level tasks for the PROVENIQ Executive Team.

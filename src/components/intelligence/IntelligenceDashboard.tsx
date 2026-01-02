@@ -539,7 +539,7 @@ export default function IntelligenceDashboard() {
                                                 <div className={`w-2 h-2 rounded-full ${geminiStatus === "thinking" ? "bg-blue-400 animate-pulse" : geminiStatus === "done" ? "bg-emerald-400" : "bg-zinc-600"}`} />
                                                 <span className="text-xs font-black uppercase tracking-widest text-blue-400">Gemini</span>
                                             </div>
-                                            <span className="text-[10px] text-zinc-500 font-mono">gemini-2.0-flash</span>
+                                            <span className="text-[10px] text-zinc-500 font-mono">gemini-2.5-flash</span>
                                         </div>
                                         <div 
                                             ref={geminiScrollRef}

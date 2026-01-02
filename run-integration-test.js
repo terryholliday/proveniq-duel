@@ -182,11 +182,11 @@ async function testCodeGeneration() {
     const startTime = Date.now();
     
     console.log('\n[Phase 1] Gemini generating initial code...');
-    const gemini1 = await callGemini('gemini-2.0-flash', ARCHITECT_SYSTEM, `Request:\n${TEST_PROMPTS.codeGeneration}`);
+    const gemini1 = await callGemini('gemini-2.5-flash', ARCHITECT_SYSTEM, `Request:\n${TEST_PROMPTS.codeGeneration}`);
     console.log(`   ✓ Gemini responded (${gemini1.metrics.outputLength} chars, ${(gemini1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     
     console.log('\n[Phase 2] OpenAI reviewing and refining...');
-    const openai1 = await callOpenAI('gpt-4o-mini', REVIEWER_SYSTEM, `Current Code:\n\n${gemini1.output}`);
+    const openai1 = await callOpenAI('gpt-4o', REVIEWER_SYSTEM, `Current Code:\n\n${gemini1.output}`);
     console.log(`   ✓ OpenAI responded (${openai1.metrics.outputLength} chars, ${(openai1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     
     console.log(`\n   Total time: ${((Date.now() - startTime)/1000).toFixed(2)}s`);
@@ -203,16 +203,16 @@ async function testStrategyDebate() {
     
     console.log('\n[Round 1] Opening statements (parallel)...');
     const [gemini1, openai1] = await Promise.all([
-        callGemini('gemini-2.0-flash', STRATEGY_OPENER, `Topic: ${TEST_PROMPTS.strategyDebate}`),
-        callOpenAI('gpt-4o-mini', STRATEGY_OPENER, `Topic: ${TEST_PROMPTS.strategyDebate}`)
+        callGemini('gemini-2.5-flash', STRATEGY_OPENER, `Topic: ${TEST_PROMPTS.strategyDebate}`),
+        callOpenAI('gpt-4o', STRATEGY_OPENER, `Topic: ${TEST_PROMPTS.strategyDebate}`)
     ]);
     console.log(`   ✓ Gemini: ${gemini1.metrics.outputLength} chars (${(gemini1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     console.log(`   ✓ OpenAI: ${openai1.metrics.outputLength} chars (${(openai1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     
     console.log('\n[Round 2] Rebuttals (parallel)...');
     const [gemini2, openai2] = await Promise.all([
-        callGemini('gemini-2.0-flash', STRATEGY_DEBATER(openai1.output), 'Your rebuttal:'),
-        callOpenAI('gpt-4o-mini', STRATEGY_DEBATER(gemini1.output), 'Your rebuttal:')
+        callGemini('gemini-2.5-flash', STRATEGY_DEBATER(openai1.output), 'Your rebuttal:'),
+        callOpenAI('gpt-4o', STRATEGY_DEBATER(gemini1.output), 'Your rebuttal:')
     ]);
     console.log(`   ✓ Gemini: ${gemini2.metrics.outputLength} chars (${(gemini2.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     console.log(`   ✓ OpenAI: ${openai2.metrics.outputLength} chars (${(openai2.metrics.responseTimeMs/1000).toFixed(2)}s)`);
@@ -231,8 +231,8 @@ async function testTaskOrchestration() {
     
     console.log('\n[Round 1] Task breakdown generation (parallel)...');
     const [gemini1, openai1] = await Promise.all([
-        callGemini('gemini-2.0-flash', ORCHESTRATOR_SYSTEM, `Objective: ${TEST_PROMPTS.taskOrchestration}`),
-        callOpenAI('gpt-4o-mini', ORCHESTRATOR_SYSTEM, `Objective: ${TEST_PROMPTS.taskOrchestration}`)
+        callGemini('gemini-2.5-flash', ORCHESTRATOR_SYSTEM, `Objective: ${TEST_PROMPTS.taskOrchestration}`),
+        callOpenAI('gpt-4o', ORCHESTRATOR_SYSTEM, `Objective: ${TEST_PROMPTS.taskOrchestration}`)
     ]);
     console.log(`   ✓ Gemini: ${gemini1.metrics.outputLength} chars (${(gemini1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
     console.log(`   ✓ OpenAI: ${openai1.metrics.outputLength} chars (${(openai1.metrics.responseTimeMs/1000).toFixed(2)}s)`);
