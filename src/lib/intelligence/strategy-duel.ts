@@ -144,16 +144,14 @@ export class StrategyDuel {
             let lastOpenaiContent = openaiTurn1.content;
 
             for (let i = 1; i < maxRounds; i++) {
-                // Gemini responds to OpenAI
+                // Both models respond to opponent's PREVIOUS round in parallel
                 const geminiSystem = SYSTEM_PROMPT_DEBATER.replace("{{OPPONENT_ARGUMENT}}", lastOpenaiContent);
-                const geminiTurn = await this.generateTurn("gemini", "Your rebuttal/refinement:", geminiSystem);
-
-                // OpenAI responds to Gemini (using Gemini's NEW response to keep it dynamic, or old? Let's use old for symmetry or new for chain? 
-                // Let's go sequential for better flow: OpenAI sees what Gemini just said about its previous point)
-                // Actually, strict debate usually has them seeing the PREVIOUS round. Let's make them respond to the previous round's opponent output to avoid order bias.
-
                 const openaiSystem = SYSTEM_PROMPT_DEBATER.replace("{{OPPONENT_ARGUMENT}}", lastGeminiContent);
-                const openaiTurn = await this.generateTurn("openai", "Your rebuttal/refinement:", openaiSystem);
+
+                const [geminiTurn, openaiTurn] = await Promise.all([
+                    this.generateTurn("gemini", "Your rebuttal/refinement:", geminiSystem),
+                    this.generateTurn("openai", "Your rebuttal/refinement:", openaiSystem)
+                ]);
 
                 const round: DuelRound = {
                     index: i,
