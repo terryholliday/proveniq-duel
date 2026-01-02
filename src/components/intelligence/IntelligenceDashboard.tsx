@@ -549,150 +549,18 @@ export default function IntelligenceDashboard() {
                                     ))}
                                 </div>
                             </motion.div>
-                        ) : mode === "duel" && duelSession ? (
-                            <motion.div
-                                key="duel-view"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="flex flex-col gap-6"
-                            >
-                                <div className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-2xl backdrop-blur-md">
-                                    <div className="flex items-center gap-4">
-                                        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-                                            <Swords className="w-6 h-6" />
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em]">Strategy Duel</span>
-                                            <span className="text-sm font-medium text-zinc-200 line-clamp-1">{duelSession.topic}</span>
-                                        </div>
-                                    </div>
-                                    <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest ${duelSession.status === "completed" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                                        duelSession.status === "error" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 animate-pulse"
-                                        }`}>
-                                        {duelSession.status}
-                                    </span>
-                                </div>
-
-                                <div className="flex flex-col gap-8 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar pb-20">
-                                    {duelSession.rounds.map((round) => (
-                                        <div key={round.index} className="flex flex-col gap-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-[1px] flex-1 bg-zinc-800"></div>
-                                                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">Round {round.index + 1}</span>
-                                                <div className="h-[1px] flex-1 bg-zinc-800"></div>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                {round.turns.map((turn, tIdx) => (
-                                                    <motion.div
-                                                        key={`${round.index}-${tIdx}`}
-                                                        initial={{ opacity: 0, y: 20 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        transition={{ delay: tIdx * 0.1 }}
-                                                        className={`p-6 rounded-2xl border flex flex-col gap-3 relative overflow-hidden ${turn.provider === "gemini" ? "bg-zinc-900 border-zinc-800" : "bg-black border-zinc-800"
-                                                            }`}
-                                                    >
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className={`w-2 h-2 rounded-full ${turn.provider === "gemini" ? "bg-blue-400" : "bg-green-400"}`} />
-                                                                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">{turn.model}</span>
-                                                            </div>
-                                                            {turn.isAgreement && (
-                                                                <span className="text-[8px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold uppercase">Consensus</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="prose prose-invert prose-sm max-w-none text-zinc-300 leading-relaxed text-sm">
-                                                            <div className="whitespace-pre-wrap">{turn.content}</div>
-                                                        </div>
-                                                    </motion.div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-
-                                    {duelSession.consensus && (
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.95 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            className="p-8 rounded-3xl bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-500/30 text-center flex flex-col items-center gap-4 shadow-2xl mt-4"
-                                        >
-                                            <div className="p-3 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 mb-2">
-                                                <ShieldCheck className="w-8 h-8" />
-                                            </div>
-                                            <h3 className="text-2xl font-bold text-indigo-200 tracking-tight">Consensus Reached</h3>
-                                            <p className="text-zinc-300 max-w-2xl leading-relaxed">
-                                                {duelSession.consensus}
-                                            </p>
-                                        </motion.div>
-                                    )}
-                                </div>
-                            </motion.div>
-                        ) : selectedIteration !== null && mode === "refine" ? (
-                            <motion.div
-                                key={selectedIteration}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="flex flex-col gap-4 h-full"
-                            >
-                                {/* Visualizer Top Bar */}
-                                <div className="flex items-center justify-between p-4 bg-zinc-900 border border-zinc-800 rounded-2xl backdrop-blur-md">
-                                    <div className="flex items-center gap-6">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em]">Active Core</span>
-                                            <span className="text-sm font-medium text-zinc-200">{iterations[selectedIteration].model}</span>
-                                        </div>
-                                        <div className="w-[1px] h-8 bg-zinc-800" />
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] text-zinc-500 uppercase font-black tracking-[0.2em]">Status</span>
-                                            <span className={`text-sm font-medium ${iterations[selectedIteration].isConverged ? "text-emerald-500" : "text-zinc-400"}`}>
-                                                {iterations[selectedIteration].isConverged ? "OPTIMAL_CONVERGENCE" : "REFINEMENT_ACTIVE"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 transition-colors"><Code className="w-4 h-4" /></button>
-                                        <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 transition-colors"><Terminal className="w-4 h-4" /></button>
-                                        <button className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 transition-colors"><MessageSquare className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-
-                                {/* Code Window */}
-                                <div className="flex-1 min-h-[500px] border border-zinc-800 rounded-2xl relative overflow-hidden bg-[#1e1e1e] group shadow-inner">
-                                    <div className="absolute top-4 right-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <span className="text-[10px] bg-zinc-800 px-3 py-1 rounded-full text-zinc-400 uppercase tracking-widest font-bold border border-zinc-700">Source Adjudicated</span>
-                                    </div>
-                                    <SyntaxHighlighter
-                                        language="typescript"
-                                        style={vscDarkPlus}
-                                        customStyle={{
-                                            margin: 0,
-                                            padding: "24px",
-                                            fontSize: "13px",
-                                            lineHeight: "1.6",
-                                            backgroundColor: "transparent",
-                                        }}
-                                        showLineNumbers
-                                    >
-                                        {iterations[selectedIteration].extractedCode}
-                                    </SyntaxHighlighter>
-                                </div>
-                            </motion.div>
                         ) : (
                             <div className="h-full min-h-[600px] rounded-2xl border border-zinc-800 flex flex-col items-center justify-center text-center p-12 bg-zinc-950/20 backdrop-blur-3xl">
                                 <div className="w-16 h-16 rounded-3xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mb-6 shadow-2xl hover:border-indigo-500/50 transition-colors">
-                                    {mode === "duel" ? <Swords className="w-8 h-8 text-indigo-500 animate-pulse" /> : <Cpu className="w-8 h-8 text-zinc-600 animate-pulse" />}
+                                    <Cpu className="w-8 h-8 text-zinc-600 animate-pulse" />
                                 </div>
                                 <h2 className="text-xl font-light text-zinc-200 mb-2 tracking-tight">
-                                    {mode === "duel" ? "Strategy Engine Idle" : "System Idle"}
+                                    System Idle
                                 </h2>
                                 <p className="max-w-xs text-sm text-zinc-500 leading-relaxed">
-                                    {mode === "refine"
-                                        ? "The intelligence layer is dormant. Initialize a refinement sequence to activate the Gemini-OpenAI adjudication protocol."
-                                        : mode === "duel"
-                                            ? "The debate arena is empty. Propose a strategic topic to initiate the adversarial consensus loop."
-                                            : "Autonomous orchestration is ready. Define a business goal to generate and route C-Level tasks to the command center."}
+                                    {mode === "hybrid"
+                                        ? "The intelligence layer is dormant. Initialize a dual-track sequence to activate the Gemini-OpenAI adjudication protocol."
+                                        : "Autonomous orchestration is ready. Define a business goal to generate and route C-Level tasks to the command center."}
                                 </p>
                             </div>
                         )}
