@@ -146,7 +146,7 @@ export interface DuelSession {
     id: string;
     timestamp: string;
     prompt: string;
-    mode: "refine" | "orchestrate";
+    mode: "refine" | "orchestrate" | "hybrid";
     iterations: Iteration[];
     scorecard: DuelScorecard | null;
     winner: "gemini" | "openai" | "tie" | null;
