@@ -12,9 +12,6 @@ import StatsPanel from "./StatsPanel";
 import DiffViewer from "./DiffViewer";
 import ReplayPanel from "./ReplayPanel";
 import PromptAnalyzer from "./PromptAnalyzer";
-import dynamic from "next/dynamic";
-
-const BattleArena3D = dynamic(() => import("./BattleArena3D"), { ssr: false });
 
 export default function IntelligenceDashboard() {
     const [task, setTask] = useState("");
@@ -40,6 +37,14 @@ export default function IntelligenceDashboard() {
     const [awaitingDecision, setAwaitingDecision] = useState(false);
     const [geminiCode, setGeminiCode] = useState<string>("");
     const [openaiCode, setOpenaiCode] = useState<string>("");
+    
+    // Live duel output state
+    const [geminiLiveOutput, setGeminiLiveOutput] = useState<string>("");
+    const [openaiLiveOutput, setOpenaiLiveOutput] = useState<string>("");
+    const [geminiStatus, setGeminiStatus] = useState<"idle" | "thinking" | "done">("idle");
+    const [openaiStatus, setOpenaiStatus] = useState<"idle" | "thinking" | "done">("idle");
+    const geminiScrollRef = useRef<HTMLDivElement>(null);
+    const openaiScrollRef = useRef<HTMLDivElement>(null);
 
     // Feature state
     const [soundEnabled, setSoundEnabled] = useState(true);
@@ -227,6 +232,12 @@ export default function IntelligenceDashboard() {
         setIterations([]);
         setAdjudication(null);
         setDuelSession(null);
+        setBattleLog([]);
+        setGeminiLiveOutput("");
+        setOpenaiLiveOutput("");
+        setGeminiStatus("thinking");
+        setOpenaiStatus("thinking");
+        setCurrentPhase("duel");
 
         try {
             const response = await fetch("/api/intelligence/hybrid", {
@@ -260,13 +271,36 @@ export default function IntelligenceDashboard() {
                             case "code_iteration":
                                 setIterations(prev => [...prev, data.iteration]);
                                 setSelectedIteration(data.iteration.index);
-                                setBattleLog(prev => [...prev, `💻 Code: ${data.iteration.provider} iteration ${data.iteration.index + 1}`]);
+                                setBattleLog(prev => [...prev, `💻 ${data.iteration.provider.toUpperCase()}: Iteration ${data.iteration.index + 1}`]);
+                                // Update live output for the appropriate LLM
+                                if (data.iteration.provider === "gemini") {
+                                    setGeminiLiveOutput(data.iteration.extractedCode || data.iteration.rawResponse);
+                                    setGeminiStatus("done");
+                                    // Auto-scroll
+                                    setTimeout(() => geminiScrollRef.current?.scrollTo({ top: geminiScrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
+                                } else {
+                                    setOpenaiLiveOutput(data.iteration.extractedCode || data.iteration.rawResponse);
+                                    setOpenaiStatus("done");
+                                    setTimeout(() => openaiScrollRef.current?.scrollTo({ top: openaiScrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
+                                }
+                                playSound("punch");
                                 break;
                             case "strategy_update":
                                 setDuelSession(data.session);
                                 const lastRound = data.session.rounds[data.session.rounds.length - 1];
                                 if (lastRound) {
                                     setBattleLog(prev => [...prev, `🎯 Strategy: Round ${data.session.rounds.length}`]);
+                                    // Update live outputs with strategy content
+                                    const geminiTurn = lastRound.turns.find((t: any) => t.provider === "gemini");
+                                    const openaiTurn = lastRound.turns.find((t: any) => t.provider === "openai");
+                                    if (geminiTurn) {
+                                        setGeminiLiveOutput(prev => prev + "\n\n--- STRATEGY ROUND " + data.session.rounds.length + " ---\n" + geminiTurn.content);
+                                        setTimeout(() => geminiScrollRef.current?.scrollTo({ top: geminiScrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
+                                    }
+                                    if (openaiTurn) {
+                                        setOpenaiLiveOutput(prev => prev + "\n\n--- STRATEGY ROUND " + data.session.rounds.length + " ---\n" + openaiTurn.content);
+                                        setTimeout(() => openaiScrollRef.current?.scrollTo({ top: openaiScrollRef.current.scrollHeight, behavior: 'smooth' }), 100);
+                                    }
                                 }
                                 break;
                             case "complete":
@@ -275,10 +309,15 @@ export default function IntelligenceDashboard() {
                                 setDuelSession(data.strategySession);
                                 setBattleStatus("✅ Dual-track execution complete!");
                                 setBattleLog(prev => [...prev, "✅ Both tracks completed successfully"]);
+                                setGeminiStatus("done");
+                                setOpenaiStatus("done");
+                                setCurrentPhase("complete");
                                 playSound("victory");
                                 break;
                             case "error":
                                 setError(data.message);
+                                setGeminiStatus("idle");
+                                setOpenaiStatus("idle");
                                 playSound("error");
                                 break;
                         }
@@ -288,6 +327,8 @@ export default function IntelligenceDashboard() {
         } catch (error: any) {
             console.error("Hybrid execution failed:", error);
             setError(error.message || "An unexpected error occurred");
+            setGeminiStatus("idle");
+            setOpenaiStatus("idle");
             playSound("error");
         } finally {
             setLoading(false);
@@ -468,27 +509,129 @@ export default function IntelligenceDashboard() {
                 {/* Right Content Area */}
                 <div className="lg:col-span-8">
                     <AnimatePresence mode="wait">
-                        {/* 3D BATTLE ARENA - Show during hybrid execution */}
-                        {loading && mode === "hybrid" ? (
+                        {/* DUAL PANE DUEL VIEW - Show during hybrid execution */}
+                        {(loading || (geminiLiveOutput || openaiLiveOutput)) && mode === "hybrid" ? (
                             <motion.div
-                                key="battle-arena"
+                                key="duel-panes"
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
+                                className="flex flex-col gap-4"
                             >
-                                <BattleArena3D
-                                    currentPhase={currentPhase}
-                                    currentAttacker={currentAttacker}
-                                    scores={scores}
-                                    currentRound={currentRound}
-                                    battleStatus={battleStatus}
-                                    elapsedTime={elapsedTime}
-                                />
-                                {/* Battle Log below arena */}
-                                <div className="mt-4 p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 max-h-40 overflow-y-auto">
+                                {/* Status Bar */}
+                                <div className="flex items-center justify-between p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
+                                    <div className="flex items-center gap-3">
+                                        <Swords className="w-5 h-5 text-indigo-400" />
+                                        <span className="text-sm font-bold text-zinc-200">{battleStatus || "Initializing duel..."}</span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-xs text-zinc-500 font-mono">{formatTime(elapsedTime)}</span>
+                                        {loading && <RotateCcw className="w-4 h-4 text-indigo-400 animate-spin" />}
+                                    </div>
+                                </div>
+
+                                {/* Dual Pane Container */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    {/* GEMINI PANE */}
+                                    <div className="flex flex-col rounded-xl border border-blue-500/30 bg-zinc-900/50 overflow-hidden">
+                                        <div className="flex items-center justify-between px-4 py-3 bg-blue-500/10 border-b border-blue-500/20">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${geminiStatus === "thinking" ? "bg-blue-400 animate-pulse" : geminiStatus === "done" ? "bg-emerald-400" : "bg-zinc-600"}`} />
+                                                <span className="text-xs font-black uppercase tracking-widest text-blue-400">Gemini</span>
+                                            </div>
+                                            <span className="text-[10px] text-zinc-500 font-mono">gemini-2.0-flash</span>
+                                        </div>
+                                        <div 
+                                            ref={geminiScrollRef}
+                                            className="flex-1 min-h-[500px] max-h-[600px] overflow-y-auto p-4 font-mono text-xs"
+                                        >
+                                            {geminiStatus === "thinking" && !geminiLiveOutput ? (
+                                                <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-500">
+                                                    <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                                                    <span className="text-xs">Generating response...</span>
+                                                </div>
+                                            ) : geminiLiveOutput ? (
+                                                <SyntaxHighlighter
+                                                    language="typescript"
+                                                    style={vscDarkPlus}
+                                                    customStyle={{
+                                                        margin: 0,
+                                                        padding: 0,
+                                                        fontSize: "11px",
+                                                        lineHeight: "1.5",
+                                                        backgroundColor: "transparent",
+                                                    }}
+                                                    wrapLongLines
+                                                >
+                                                    {geminiLiveOutput}
+                                                </SyntaxHighlighter>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-zinc-600 italic">
+                                                    Awaiting Gemini...
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="px-4 py-2 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
+                                            <span className="text-[10px] text-zinc-500">{geminiLiveOutput.length.toLocaleString()} chars</span>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${geminiStatus === "done" ? "bg-emerald-500/20 text-emerald-400" : geminiStatus === "thinking" ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-500"}`}>
+                                                {geminiStatus === "thinking" ? "THINKING..." : geminiStatus === "done" ? "COMPLETE" : "IDLE"}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* OPENAI PANE */}
+                                    <div className="flex flex-col rounded-xl border border-green-500/30 bg-zinc-900/50 overflow-hidden">
+                                        <div className="flex items-center justify-between px-4 py-3 bg-green-500/10 border-b border-green-500/20">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${openaiStatus === "thinking" ? "bg-green-400 animate-pulse" : openaiStatus === "done" ? "bg-emerald-400" : "bg-zinc-600"}`} />
+                                                <span className="text-xs font-black uppercase tracking-widest text-green-400">OpenAI</span>
+                                            </div>
+                                            <span className="text-[10px] text-zinc-500 font-mono">gpt-4o</span>
+                                        </div>
+                                        <div 
+                                            ref={openaiScrollRef}
+                                            className="flex-1 min-h-[500px] max-h-[600px] overflow-y-auto p-4 font-mono text-xs"
+                                        >
+                                            {openaiStatus === "thinking" && !openaiLiveOutput ? (
+                                                <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-500">
+                                                    <div className="w-8 h-8 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin" />
+                                                    <span className="text-xs">Generating response...</span>
+                                                </div>
+                                            ) : openaiLiveOutput ? (
+                                                <SyntaxHighlighter
+                                                    language="typescript"
+                                                    style={vscDarkPlus}
+                                                    customStyle={{
+                                                        margin: 0,
+                                                        padding: 0,
+                                                        fontSize: "11px",
+                                                        lineHeight: "1.5",
+                                                        backgroundColor: "transparent",
+                                                    }}
+                                                    wrapLongLines
+                                                >
+                                                    {openaiLiveOutput}
+                                                </SyntaxHighlighter>
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-zinc-600 italic">
+                                                    Awaiting OpenAI...
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="px-4 py-2 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
+                                            <span className="text-[10px] text-zinc-500">{openaiLiveOutput.length.toLocaleString()} chars</span>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${openaiStatus === "done" ? "bg-emerald-500/20 text-emerald-400" : openaiStatus === "thinking" ? "bg-green-500/20 text-green-400" : "bg-zinc-800 text-zinc-500"}`}>
+                                                {openaiStatus === "thinking" ? "THINKING..." : openaiStatus === "done" ? "COMPLETE" : "IDLE"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Battle Log below panes */}
+                                <div className="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 max-h-32 overflow-y-auto">
                                     <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Battle Log</div>
                                     <div className="space-y-1">
-                                        {battleLog.slice(-8).map((log, idx) => (
+                                        {battleLog.slice(-6).map((log, idx) => (
                                             <motion.div
                                                 key={idx}
                                                 initial={{ opacity: 0, x: -10 }}
