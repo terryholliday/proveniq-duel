@@ -13,20 +13,25 @@ export async function POST(req: NextRequest) {
 
         const defaultConfig: IntelligenceConfig = {
             geminiModel: "gemini-3-pro-preview",
-            openaiModel: "gpt-4o",
+            openaiModel: "gpt-5.2",
             temperature: 0.7,
             maxIterations: 1,
             ...config,
         };
 
         const orchestrator = new TaskOrchestrator(defaultConfig);
-        const tasks = await orchestrator.orchestrate(objective);
+        const result = await orchestrator.orchestrate(objective);
+        
+        // Use the winning tasks based on scorecard, or merge both
+        const tasks = result.scorecard?.winner === "openai" 
+            ? result.openaiTasks 
+            : result.geminiTasks;
 
         // Push tasks to PROVENIQ Main
         // Since we are now INSIDE Main, we can just call the task API directly or via fetch to localhost
         // We will keep the fetch pattern for consistency/decoupling
         const pushResults = await Promise.all(
-            tasks.map(async (task) => {
+            tasks.map(async (task: any) => {
                 try {
                     // Assuming the app is running on these ports, but in production we might want a relative path or direct DB call.
                     // For now, we use localhost:3004 (MAIN port)

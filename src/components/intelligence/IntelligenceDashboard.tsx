@@ -1,12 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target, Swords } from "lucide-react";
-import { Iteration, AdjudicationResult, DuelSession } from "@/lib/intelligence/types";
+import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target } from "lucide-react";
+import { Iteration, AdjudicationResult } from "@/lib/intelligence/types";
 import { AdminTask } from "@/lib/intelligence/orchestrator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { soundEngine, saveDuelSession, generateSessionId, exportToClipboard, DuelSession } from "@/lib/duel-utils";
+import StatsPanel from "./StatsPanel";
+import DiffViewer from "./DiffViewer";
+import ReplayPanel from "./ReplayPanel";
+import PromptAnalyzer from "./PromptAnalyzer";
+import dynamic from "next/dynamic";
+
+const BattleArena3D = dynamic(() => import("./BattleArena3D"), { ssr: false });
 
 export default function IntelligenceDashboard() {
     const [task, setTask] = useState("");
@@ -18,6 +26,80 @@ export default function IntelligenceDashboard() {
     const [selectedIteration, setSelectedIteration] = useState<number | null>(null);
     const [mode, setMode] = useState<"refine" | "orchestrate" | "duel">("refine");
     const [orchestratedTasks, setOrchestratedTasks] = useState<AdminTask[]>([]);
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Battle state
+    const [battleStatus, setBattleStatus] = useState<string>("");
+    const [currentRound, setCurrentRound] = useState(0);
+    const [scores, setScores] = useState<{ gemini: number; openai: number }>({ gemini: 0, openai: 0 });
+    const [currentAttacker, setCurrentAttacker] = useState<string>("");
+    const [battleLog, setBattleLog] = useState<string[]>([]);
+    const [currentPhase, setCurrentPhase] = useState<"initial" | "duel" | "scoring" | "review" | "complete">("initial");
+    const [scorecard, setScorecard] = useState<DuelScorecard | null>(null);
+    const [awaitingDecision, setAwaitingDecision] = useState(false);
+    const [geminiCode, setGeminiCode] = useState<string>("");
+    const [openaiCode, setOpenaiCode] = useState<string>("");
+
+    // Feature state
+    const [soundEnabled, setSoundEnabled] = useState(true);
+    const [showStats, setShowStats] = useState(false);
+    const [showReplay, setShowReplay] = useState(false);
+    const [showDiff, setShowDiff] = useState(false);
+    const [copied, setCopied] = useState<"gemini" | "openai" | null>(null);
+
+    // Timer effect
+    useEffect(() => {
+        if (loading) {
+            setElapsedTime(0);
+            timerRef.current = setInterval(() => {
+                setElapsedTime(prev => prev + 1);
+            }, 1000);
+        } else {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        }
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [loading]);
+
+    const formatTime = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const playSound = (type: "punch" | "victory" | "bell" | "error") => {
+        if (!soundEnabled) return;
+        switch (type) {
+            case "punch": soundEngine.playPunch(); break;
+            case "victory": soundEngine.playVictory(); break;
+            case "bell": soundEngine.playBell(); break;
+            case "error": soundEngine.playError(); break;
+        }
+    };
+
+    // Save session when duel completes
+    useEffect(() => {
+        if (currentPhase === "complete" && iterations.length > 0) {
+            const session: DuelSession = {
+                id: generateSessionId(),
+                timestamp: new Date().toISOString(),
+                prompt: task,
+                mode,
+                iterations,
+                scorecard,
+                winner: scorecard?.winner || null,
+                elapsedTime,
+                geminiCode,
+                openaiCode,
+            };
+            saveDuelSession(session);
+        }
+    }, [currentPhase]);
 
     const startRefinement = async () => {
         if (!task) return;
@@ -26,31 +108,88 @@ export default function IntelligenceDashboard() {
         setIterations([]);
         setAdjudication(null);
         setSelectedIteration(null);
-        setDuelSession(null);
 
         try {
-            const response = await fetch("/api/intelligence/refine", {
+            const response = await fetch("/api/intelligence/refine-stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    task,
-                    config: { maxIterations: 7 }
-                }),
+                body: JSON.stringify({ task, config: { maxIterations: 5 } }),
             });
 
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || "Refinement request failed");
-            }
+            if (!response.ok) throw new Error("Stream request failed");
 
-            if (data.iterations) {
-                setIterations(data.iterations);
-                setAdjudication(data.adjudication || null);
-                setSelectedIteration(data.iterations.length - 1);
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            if (!reader) throw new Error("No response body");
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+                for (const line of lines) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        switch (data.type) {
+                            case "start":
+                                setBattleStatus(data.message);
+                                setBattleLog(prev => [...prev, data.message]);
+                                playSound("bell");
+                                break;
+                            case "phase":
+                                setCurrentPhase(data.phase);
+                                setBattleStatus(data.message);
+                                setBattleLog(prev => [...prev, data.message]);
+                                break;
+                            case "round":
+                                setCurrentRound(data.round);
+                                setCurrentAttacker(data.attacker);
+                                setBattleStatus(data.commentary);
+                                setScores(data.scores);
+                                if (data.phase) setCurrentPhase(data.phase);
+                                const label = data.isGeneration ? `🎯 ${data.attacker}` : `⚔️ R${data.round}`;
+                                setBattleLog(prev => [...prev, `${label}: ${data.commentary}`]);
+                                if (data.iteration) {
+                                    setIterations(prev => [...prev, data.iteration]);
+                                    setSelectedIteration(data.iteration.index);
+                                }
+                                if (!data.isGeneration) playSound("punch");
+                                break;
+                            case "scoring":
+                                setCurrentPhase("scoring");
+                                setBattleStatus(data.message);
+                                setBattleLog(prev => [...prev, data.message]);
+                                break;
+                            case "scorecard":
+                                setScorecard(data.scorecard);
+                                setBattleStatus(data.message);
+                                break;
+                            case "review":
+                                setCurrentPhase("review");
+                                setBattleStatus(data.message);
+                                setScores(data.scores);
+                                setScorecard(data.scorecard);
+                                setAwaitingDecision(data.awaitingUserDecision || false);
+                                if (data.geminiCode) setGeminiCode(data.geminiCode);
+                                if (data.openaiCode) setOpenaiCode(data.openaiCode);
+                                if (data.scorecard?.consensusReached) playSound("victory");
+                                break;
+                            case "complete":
+                                setCurrentPhase("complete");
+                                setBattleStatus(data.message);
+                                setScores(data.scores);
+                                setAdjudication(data.adjudication);
+                                break;
+                        }
+                    } catch (e) { console.error("Parse error:", e); }
+                }
             }
         } catch (error: any) {
             console.error("Refinement failed:", error);
             setError(error.message || "An unexpected error occurred");
+            playSound("error");
         } finally {
             setLoading(false);
         }
@@ -299,7 +438,40 @@ export default function IntelligenceDashboard() {
                 {/* Right Content Area */}
                 <div className="lg:col-span-8">
                     <AnimatePresence mode="wait">
-                        {mode === "orchestrate" && orchestratedTasks.length > 0 ? (
+                        {/* 3D BATTLE ARENA - Show during duel */}
+                        {loading && mode === "refine" ? (
+                            <motion.div
+                                key="battle-arena"
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                            >
+                                <BattleArena3D
+                                    currentPhase={currentPhase}
+                                    currentAttacker={currentAttacker}
+                                    scores={scores}
+                                    currentRound={currentRound}
+                                    battleStatus={battleStatus}
+                                    elapsedTime={elapsedTime}
+                                />
+                                {/* Battle Log below arena */}
+                                <div className="mt-4 p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 max-h-40 overflow-y-auto">
+                                    <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Battle Log</div>
+                                    <div className="space-y-1">
+                                        {battleLog.slice(-8).map((log, idx) => (
+                                            <motion.div
+                                                key={idx}
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                className="text-xs text-zinc-400 font-mono"
+                                            >
+                                                {log}
+                                            </motion.div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ) : mode === "orchestrate" && orchestratedTasks.length > 0 ? (
                             <motion.div
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}

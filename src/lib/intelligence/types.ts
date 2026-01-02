@@ -28,6 +28,28 @@ export interface AdjudicationResult {
     meetsOriginalIntent: boolean;
 }
 
+export interface DuelScorecard {
+    geminiErrors: string[];
+    openaiErrors: string[];
+    geminiScore: number;
+    openaiScore: number;
+    agreements: string[];
+    disagreements: string[];
+    winner: "gemini" | "openai" | "tie";
+    consensusReached: boolean;
+    recommendedAction: string;
+}
+
+export interface DuelState {
+    phase: "init" | "duel" | "scoring" | "review" | "complete";
+    round: number;
+    maxRounds: number;
+    geminiCode: string;
+    openaiCode: string;
+    scorecard?: DuelScorecard;
+    awaitingUserDecision: boolean;
+}
+
 export interface AdminTask {
     id: string;
     title: string;
