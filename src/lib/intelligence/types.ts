@@ -69,3 +69,25 @@ export interface IntelligenceConfig {
     temperature?: number;
     maxIterations?: number;
 }
+
+export interface DuelTurn {
+    provider: ModelProvider;
+    model: string;
+    content: string;
+    timestamp: string;
+    isAgreement: boolean;
+}
+
+export interface DuelRound {
+    index: number;
+    turns: DuelTurn[];
+}
+
+export interface DuelSession {
+    id: string;
+    topic: string;
+    rounds: DuelRound[];
+    status: "running" | "completed" | "error";
+    consensus?: string;
+    error?: string;
+}

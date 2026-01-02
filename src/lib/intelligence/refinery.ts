@@ -49,8 +49,8 @@ export class Refinery {
 
     constructor(config: IntelligenceConfig) {
         this.config = config;
-        this.gemini = new GeminiProvider(config.geminiModel, config.temperature);
-        this.openai = new OpenAIProvider(config.openaiModel, config.temperature);
+        this.gemini = new GeminiProvider(config.geminiModel ?? "gemini-2.5-flash", config.temperature ?? 0.7);
+        this.openai = new OpenAIProvider(config.openaiModel ?? "gpt-4o", config.temperature ?? 0.7);
     }
 
     private extractCodeBlock(text: string): { code: string; isFenced: boolean } {
@@ -97,10 +97,10 @@ export class Refinery {
         let currentCode = "";
         let lastCode = "";
 
-        for (let i = 0; i < this.config.maxIterations; i++) {
+        for (let i = 0; i < (this.config.maxIterations ?? 5); i++) {
             const providerType: ModelProvider = i % 2 === 0 ? "gemini" : "openai";
             const provider: LLMProvider = providerType === "gemini" ? this.gemini : this.openai;
-            const modelName = providerType === "gemini" ? this.config.geminiModel : this.config.openaiModel;
+            const modelName = providerType === "gemini" ? (this.config.geminiModel ?? "gemini-2.5-flash") : (this.config.openaiModel ?? "gpt-4o");
 
             const systemInstruction = i === 0 ? ARCHITECT_SYSTEM : REVIEWER_SYSTEM;
             const userPayload = i === 0 ? `Request:\n${task}\n` : `Current Code:\n\n${currentCode}\n`;
