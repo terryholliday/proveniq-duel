@@ -83,8 +83,8 @@ export class StrategyDuel {
 
     constructor(config: IntelligenceConfig) {
         this.config = config;
-        this.gemini = new GeminiProvider(config.geminiModel ?? "gemini-2.5-flash", config.temperature ?? 0.7);
-        this.openai = new OpenAIProvider(config.openaiModel ?? "gpt-4o", config.temperature ?? 0.7);
+        this.gemini = new GeminiProvider(config.geminiModel ?? "gemini-3-pro-preview", config.temperature ?? 0.7);
+        this.openai = new OpenAIProvider(config.openaiModel ?? "gpt-5.2", config.temperature ?? 0.7);
     }
 
     private async generateTurn(
@@ -94,8 +94,8 @@ export class StrategyDuel {
     ): Promise<DuelTurn> {
         const provider: LLMProvider = providerType === "gemini" ? this.gemini : this.openai;
         const modelName = providerType === "gemini"
-            ? (this.config.geminiModel ?? "gemini-2.5-flash")
-            : (this.config.openaiModel ?? "gpt-4o");
+            ? (this.config.geminiModel ?? "gemini-3-pro-preview")
+            : (this.config.openaiModel ?? "gpt-5.2");
 
         const rawResponse = await provider.call(systemPrompt, prompt);
         const isAgreement = rawResponse.includes("[AGREE]");
