@@ -162,19 +162,19 @@ export default function IntelligenceDashboard() {
                                 onClick={() => setMode("refine")}
                                 className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "refine" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
                             >
-                                Refine
+                                Code
                             </button>
                             <button
                                 onClick={() => setMode("duel")}
                                 className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "duel" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
                             >
-                                Strategy Duel
+                                Strategy
                             </button>
                             <button
                                 onClick={() => setMode("orchestrate")}
                                 className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "orchestrate" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
                             >
-                                Orchestrate
+                                Tasks
                             </button>
                         </div>
 
@@ -182,7 +182,7 @@ export default function IntelligenceDashboard() {
                             {mode === "duel" ? "Debate Topic" : (mode === "refine" ? "Primary Objective" : "Business Goal")}
                         </label>
                         <textarea
-                            className="w-full h-32 bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all placeholder:text-zinc-700 resize-none"
+                            className="w-full h-96 bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all placeholder:text-zinc-700 resize-none"
                             placeholder={getPlaceholder()}
                             value={task}
                             onChange={(e) => setTask(e.target.value)}
