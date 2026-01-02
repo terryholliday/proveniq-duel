@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target } from "lucide-react";
+import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target, Swords } from "lucide-react";
 import { Iteration, AdjudicationResult } from "@/lib/intelligence/types";
 import { AdminTask } from "@/lib/intelligence/orchestrator";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -24,7 +24,7 @@ export default function IntelligenceDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedIteration, setSelectedIteration] = useState<number | null>(null);
-    const [mode, setMode] = useState<"refine" | "orchestrate" | "duel">("refine");
+    const [mode, setMode] = useState<"hybrid" | "orchestrate">("hybrid");
     const [orchestratedTasks, setOrchestratedTasks] = useState<AdminTask[]>([]);
     const [elapsedTime, setElapsedTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -113,7 +113,7 @@ export default function IntelligenceDashboard() {
             const response = await fetch("/api/intelligence/refine-stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ task, config: { maxIterations: 5 } }),
+                body: JSON.stringify({ task, config: { maxIterations: 3 } }),
             });
 
             if (!response.ok) throw new Error("Stream request failed");
@@ -220,35 +220,75 @@ export default function IntelligenceDashboard() {
         }
     };
 
-    const startDuel = async () => {
+    const startHybrid = async () => {
         if (!task) return;
         setLoading(true);
         setError(null);
-        setDuelSession(null);
         setIterations([]);
         setAdjudication(null);
+        setDuelSession(null);
 
         try {
-            const response = await fetch("/api/intelligence/duel", {
+            const response = await fetch("/api/intelligence/hybrid", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    topic: task,
-                    config: { maxIterations: 5 }
-                }),
+                body: JSON.stringify({ task, config: { maxIterations: 3 } }),
             });
 
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || "Strategy Duel request failed");
-            }
+            if (!response.ok) throw new Error("Hybrid execution failed");
 
-            if (data.id) {
-                setDuelSession(data);
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            if (!reader) throw new Error("No response body");
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+
+                for (const line of lines) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        switch (data.type) {
+                            case "start":
+                                setBattleStatus(data.message);
+                                setBattleLog(prev => [...prev, data.message]);
+                                playSound("bell");
+                                break;
+                            case "code_iteration":
+                                setIterations(prev => [...prev, data.iteration]);
+                                setSelectedIteration(data.iteration.index);
+                                setBattleLog(prev => [...prev, `💻 Code: ${data.iteration.provider} iteration ${data.iteration.index + 1}`]);
+                                break;
+                            case "strategy_update":
+                                setDuelSession(data.session);
+                                const lastRound = data.session.rounds[data.session.rounds.length - 1];
+                                if (lastRound) {
+                                    setBattleLog(prev => [...prev, `🎯 Strategy: Round ${data.session.rounds.length}`]);
+                                }
+                                break;
+                            case "complete":
+                                setIterations(data.codeIterations);
+                                setAdjudication(data.adjudication);
+                                setDuelSession(data.strategySession);
+                                setBattleStatus("✅ Dual-track execution complete!");
+                                setBattleLog(prev => [...prev, "✅ Both tracks completed successfully"]);
+                                playSound("victory");
+                                break;
+                            case "error":
+                                setError(data.message);
+                                playSound("error");
+                                break;
+                        }
+                    } catch (e) { console.error("Parse error:", e); }
+                }
             }
         } catch (error: any) {
-            console.error("Duel failed:", error);
+            console.error("Hybrid execution failed:", error);
             setError(error.message || "An unexpected error occurred");
+            playSound("error");
         } finally {
             setLoading(false);
         }
@@ -256,26 +296,23 @@ export default function IntelligenceDashboard() {
 
     const getPlaceholder = () => {
         switch (mode) {
-            case "refine": return "Describe the logic or module to refine...";
-            case "orchestrate": return "Describe the high-level business objective...";
-            case "duel": return "Enter a strategic topic for debate (e.g., 'Monolith vs Microservices for a startup')...";
+            case "hybrid": return "Describe what you want to build. I'll generate code while debating the best approach...";
+            case "orchestrate": return "Describe a high-level business objective...";
         }
     };
 
     const getButtonLabel = () => {
         if (loading) return "Processing...";
         switch (mode) {
-            case "refine": return "Initialize Refinement";
+            case "hybrid": return "Execute Dual-Track Analysis";
             case "orchestrate": return "Generate Admin Tasks";
-            case "duel": return "Commence Strategy Duel";
         }
     };
 
     const handleAction = () => {
         switch (mode) {
-            case "refine": return startRefinement();
+            case "hybrid": return startHybrid();
             case "orchestrate": return startOrchestration();
-            case "duel": return startDuel();
         }
     };
 
@@ -296,18 +333,12 @@ export default function IntelligenceDashboard() {
                     <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
 
 
-                        <div className="flex gap-2 mb-6 p-1 bg-zinc-950 rounded-lg border border-zinc-800">
+                        <div className="flex gap-2 mb-6 p-1 bg-zinc-900/50 rounded-lg border border-zinc-800">
                             <button
-                                onClick={() => setMode("refine")}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "refine" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
+                                onClick={() => setMode("hybrid")}
+                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "hybrid" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
                             >
-                                Code
-                            </button>
-                            <button
-                                onClick={() => setMode("duel")}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "duel" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
-                            >
-                                Strategy
+                                Code + Strategy
                             </button>
                             <button
                                 onClick={() => setMode("orchestrate")}
@@ -318,7 +349,7 @@ export default function IntelligenceDashboard() {
                         </div>
 
                         <label className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3 block">
-                            {mode === "duel" ? "Debate Topic" : (mode === "refine" ? "Primary Objective" : "Business Goal")}
+                            {mode === "hybrid" ? "Primary Objective" : "Business Goal"}
                         </label>
                         <textarea
                             className="w-full h-96 bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 transition-all placeholder:text-zinc-700 resize-none"
@@ -330,21 +361,20 @@ export default function IntelligenceDashboard() {
                         <button
                             onClick={handleAction}
                             disabled={loading || !task}
-                            className={`mt-6 w-full py-3 rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-[0.98] ${mode === "duel" ? "bg-indigo-500 text-white hover:bg-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)]" : (mode === "refine" ? "bg-zinc-100 text-black hover:bg-white" : "bg-red-500 text-white hover:bg-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]")
-                                }`}
+                            className={`mt-6 w-full py-3 rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-[0.98] ${mode === "hybrid" ? "bg-indigo-500 text-white hover:bg-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)]" : "bg-red-500 text-white hover:bg-red-400 shadow-[0_0_20px_rgba(239,68,68,0.2)]"}`}
                         >
                             {loading ? (
                                 <RotateCcw className="w-4 h-4 animate-spin" />
                             ) : (
-                                mode === "duel" ? <Swords className="w-4 h-4 fill-white" /> : <Play className={`w-4 h-4 ${mode === "refine" ? "fill-current" : "fill-white"}`} />
+                                mode === "hybrid" ? <Sparkles className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />
                             )}
                             {getButtonLabel()}
                         </button>
                     </div>
 
-                    {/* Adjudication Truth Card (Only for Refine) */}
+                    {/* Adjudication Truth Card (Only for Hybrid) */}
                     <AnimatePresence>
-                        {adjudication && mode === "refine" && (
+                        {adjudication && mode === "hybrid" && (
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
@@ -373,8 +403,8 @@ export default function IntelligenceDashboard() {
                         )}
                     </AnimatePresence>
 
-                    {/* Iteration Timeline (Only for Refine) */}
-                    {mode === "refine" && (
+                    {/* Iteration Timeline (Only for Hybrid) */}
+                    {mode === "hybrid" && (
                         <div className="flex flex-col gap-3">
                             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest px-2">Refinement Registry</h3>
                             <AnimatePresence mode="popLayout">
@@ -438,8 +468,8 @@ export default function IntelligenceDashboard() {
                 {/* Right Content Area */}
                 <div className="lg:col-span-8">
                     <AnimatePresence mode="wait">
-                        {/* 3D BATTLE ARENA - Show during duel */}
-                        {loading && mode === "refine" ? (
+                        {/* 3D BATTLE ARENA - Show during hybrid execution */}
+                        {loading && mode === "hybrid" ? (
                             <motion.div
                                 key="battle-arena"
                                 initial={{ opacity: 0, scale: 0.95 }}
