@@ -25,8 +25,8 @@ const PROVIDER_COLORS: Record<ModelProvider, { border: string; bg: string; text:
 };
 
 const PROVIDER_LABELS: Record<ModelProvider, string> = {
-    gemini: "Gemini 2.5 Pro",
-    openai: "GPT-4o",
+    gemini: "Gemini 3 Pro",
+    openai: "GPT-5.2",
     claude: "Claude Sonnet 4",
 };
 
@@ -225,36 +225,58 @@ export default function SynthesisCascadeView({ session, loading, onStart }: Prop
                 </div>
             )}
 
-            {/* 3-Model Generation View */}
-            {session && session.rounds.length > 0 && session.rounds[0].generations && (
+            {/* 3-Model Generation View - Shows during generation phase */}
+            {(loading || (session && session.rounds.length > 0)) && (
                 <div className="grid grid-cols-3 gap-4">
-                    {session.rounds[0].generations.map((gen) => (
-                        <motion.div
-                            key={gen.provider}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`flex flex-col rounded-xl border ${PROVIDER_COLORS[gen.provider].border} bg-zinc-900/50 overflow-hidden`}
-                        >
-                            <div className={`flex items-center justify-between px-4 py-3 ${PROVIDER_COLORS[gen.provider].bg} border-b ${PROVIDER_COLORS[gen.provider].border}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                                    <span className={`text-xs font-black uppercase tracking-widest ${PROVIDER_COLORS[gen.provider].text}`}>
-                                        {gen.provider}
+                    {(["gemini", "openai", "claude"] as ModelProvider[]).map((provider) => {
+                        const gen = session?.rounds[0]?.generations?.find(g => g.provider === provider);
+                        const colors = PROVIDER_COLORS[provider];
+                        const isComplete = !!gen;
+                        const isThinking = loading && !isComplete;
+                        
+                        return (
+                            <motion.div
+                                key={provider}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={`flex flex-col rounded-xl border ${colors.border} bg-zinc-900/50 overflow-hidden`}
+                            >
+                                <div className={`flex items-center justify-between px-4 py-3 ${colors.bg} border-b ${colors.border}`}>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${isComplete ? "bg-emerald-400" : isThinking ? `${colors.text} animate-pulse` : "bg-zinc-600"}`} />
+                                        <span className={`text-xs font-black uppercase tracking-widest ${colors.text}`}>
+                                            {PROVIDER_LABELS[provider]}
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 font-mono">
+                                        {gen ? `${gen.latencyMs}ms` : isThinking ? "thinking..." : "waiting"}
                                     </span>
                                 </div>
-                                <span className="text-[10px] text-zinc-500 font-mono">{gen.latencyMs}ms</span>
-                            </div>
-                            <div className="flex-1 min-h-[300px] max-h-[400px] overflow-y-auto p-4">
-                                <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono leading-relaxed">
-                                    {gen.content.slice(0, 1500)}{gen.content.length > 1500 ? "..." : ""}
-                                </pre>
-                            </div>
-                            <div className="px-4 py-2 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
-                                <span className="text-[10px] text-zinc-500">{gen.content.length.toLocaleString()} chars</span>
-                                <span className="text-[10px] text-zinc-500 font-mono">{PROVIDER_LABELS[gen.provider]}</span>
-                            </div>
-                        </motion.div>
-                    ))}
+                                <div className="flex-1 min-h-[300px] max-h-[400px] overflow-y-auto p-4">
+                                    {isThinking && !gen ? (
+                                        <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-500">
+                                            <div className={`w-8 h-8 border-2 ${colors.border} border-t-current rounded-full animate-spin`} />
+                                            <span className="text-xs">Generating response...</span>
+                                        </div>
+                                    ) : gen ? (
+                                        <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono leading-relaxed">
+                                            {gen.content.slice(0, 1500)}{gen.content.length > 1500 ? "..." : ""}
+                                        </pre>
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full text-zinc-600 italic">
+                                            Awaiting {PROVIDER_LABELS[provider]}...
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="px-4 py-2 bg-zinc-900/80 border-t border-zinc-800 flex items-center justify-between">
+                                    <span className="text-[10px] text-zinc-500">{gen ? gen.content.length.toLocaleString() : 0} chars</span>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${isComplete ? "bg-emerald-500/20 text-emerald-400" : isThinking ? `${colors.bg} ${colors.text}` : "bg-zinc-800 text-zinc-500"}`}>
+                                        {isComplete ? "COMPLETE" : isThinking ? "THINKING..." : "IDLE"}
+                                    </span>
+                                </div>
+                            </motion.div>
+                        );
+                    })}
                 </div>
             )}
 

@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════════
-// SYNTHESIS CASCADE API ROUTE
-// 3-Model Truth-Finding Architecture
+// SYNTHESIS CASCADE API ROUTE (STREAMING)
+// 3-Model Truth-Finding Architecture with Server-Sent Events
 // ═══════════════════════════════════════════════════════════════
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { SynthesisCascade } from "@/lib/intelligence/synthesis-cascade";
-import { CascadeConfig } from "@/lib/intelligence/types";
+import { CascadeConfig, CascadeSession } from "@/lib/intelligence/types";
 
 export async function POST(request: NextRequest) {
     try {
@@ -16,52 +16,82 @@ export async function POST(request: NextRequest) {
         };
 
         if (!topic || typeof topic !== "string") {
-            return NextResponse.json(
-                { error: "Topic is required and must be a string" },
-                { status: 400 }
+            return new Response(
+                JSON.stringify({ error: "Topic is required and must be a string" }),
+                { status: 400, headers: { "Content-Type": "application/json" } }
             );
         }
 
         // Validate API keys are present
         if (!process.env.OPENAI_API_KEY) {
-            return NextResponse.json(
-                { error: "OPENAI_API_KEY not configured" },
-                { status: 500 }
+            return new Response(
+                JSON.stringify({ error: "OPENAI_API_KEY not configured" }),
+                { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
         if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json(
-                { error: "GEMINI_API_KEY not configured" },
-                { status: 500 }
+            return new Response(
+                JSON.stringify({ error: "GEMINI_API_KEY not configured" }),
+                { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
         if (!process.env.CLAUDE_API_KEY) {
-            return NextResponse.json(
-                { error: "CLAUDE_API_KEY not configured" },
-                { status: 500 }
+            return new Response(
+                JSON.stringify({ error: "CLAUDE_API_KEY not configured" }),
+                { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
 
-        console.log(`[Cascade API] Starting synthesis cascade for topic: ${topic.substring(0, 100)}...`);
+        console.log(`[Cascade API] Starting streaming cascade for topic: ${topic.substring(0, 100)}...`);
 
-        const cascade = new SynthesisCascade(config);
-        const session = await cascade.run(topic);
+        // Create SSE stream
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            async start(controller) {
+                const sendEvent = (event: string, data: any) => {
+                    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+                };
 
-        console.log(`[Cascade API] Completed. Status: ${session.status}, Consensus: ${session.consensusReached}, Latency: ${session.totalLatencyMs}ms`);
+                try {
+                    const cascade = new SynthesisCascade(config);
+                    
+                    // Run cascade with progress callback
+                    const session = await cascade.run(topic, (update: CascadeSession) => {
+                        sendEvent("progress", update);
+                    });
 
-        return NextResponse.json(session);
+                    // Send final result
+                    sendEvent("complete", session);
+                    console.log(`[Cascade API] Completed. Status: ${session.status}, Consensus: ${session.consensusReached}`);
+                    
+                } catch (error: any) {
+                    console.error("[Cascade API] Stream error:", error);
+                    sendEvent("error", { error: error.message || "Cascade execution failed" });
+                } finally {
+                    controller.close();
+                }
+            }
+        });
+
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        });
 
     } catch (error: any) {
         console.error("[Cascade API] Error:", error);
-        return NextResponse.json(
-            { error: error.message || "Internal server error" },
-            { status: 500 }
+        return new Response(
+            JSON.stringify({ error: error.message || "Internal server error" }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
         );
     }
 }
 
 export async function GET() {
-    return NextResponse.json({
+    return new Response(JSON.stringify({
         name: "Synthesis Cascade",
         description: "3-Model Truth-Finding Architecture",
         models: {
@@ -83,5 +113,5 @@ export async function GET() {
                 },
             },
         },
-    });
+    }), { headers: { "Content-Type": "application/json" } });
 }

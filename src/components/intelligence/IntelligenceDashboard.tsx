@@ -220,11 +220,41 @@ export default function IntelligenceDashboard() {
                 throw new Error(errorData.error || "Cascade execution failed");
             }
 
-            const session: CascadeSession = await response.json();
-            setCascadeSession(session);
-            
-            if (session.consensusReached) {
-                playSound("victory");
+            // Handle SSE stream
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error("No response body");
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (line.startsWith("event: ")) {
+                        const eventType = line.slice(7);
+                        const dataLineIndex = lines.indexOf(line) + 1;
+                        if (dataLineIndex < lines.length && lines[dataLineIndex].startsWith("data: ")) {
+                            const data = JSON.parse(lines[dataLineIndex].slice(6));
+                            
+                            if (eventType === "progress") {
+                                setCascadeSession(data as CascadeSession);
+                            } else if (eventType === "complete") {
+                                setCascadeSession(data as CascadeSession);
+                                if (data.consensusReached) {
+                                    playSound("victory");
+                                }
+                            } else if (eventType === "error") {
+                                throw new Error(data.error);
+                            }
+                        }
+                    }
+                }
             }
         } catch (error: any) {
             console.error("Cascade failed:", error);
