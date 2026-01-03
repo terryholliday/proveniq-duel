@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Play, RotateCcw, ChevronRight, Code, Terminal, MessageSquare, Cpu, CheckCircle2, AlertCircle, ShieldCheck, Target, Swords } from "lucide-react";
-import { Iteration, AdjudicationResult, DuelScorecard } from "@/lib/intelligence/types";
+import { Iteration, AdjudicationResult, DuelScorecard, CascadeSession } from "@/lib/intelligence/types";
 import { AdminTask } from "@/lib/intelligence/orchestrator";
+import SynthesisCascadeView from "./SynthesisCascadeView";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { soundEngine, saveDuelSession, generateSessionId, exportToClipboard, DuelSession } from "@/lib/duel-utils";
@@ -21,7 +22,9 @@ export default function IntelligenceDashboard() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedIteration, setSelectedIteration] = useState<number | null>(null);
-    const [mode, setMode] = useState<"hybrid" | "orchestrate">("hybrid");
+    const [mode, setMode] = useState<"hybrid" | "orchestrate" | "cascade">("hybrid");
+    const [cascadeSession, setCascadeSession] = useState<CascadeSession | null>(null);
+    const [cascadeLoading, setCascadeLoading] = useState(false);
     const [orchestratedTasks, setOrchestratedTasks] = useState<AdminTask[]>([]);
     const [elapsedTime, setElapsedTime] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -200,6 +203,38 @@ export default function IntelligenceDashboard() {
         }
     };
 
+    const startCascade = async (topic: string) => {
+        setCascadeLoading(true);
+        setCascadeSession(null);
+        setError(null);
+
+        try {
+            const response = await fetch("/api/intelligence/cascade", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ topic }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Cascade execution failed");
+            }
+
+            const session: CascadeSession = await response.json();
+            setCascadeSession(session);
+            
+            if (session.consensusReached) {
+                playSound("victory");
+            }
+        } catch (error: any) {
+            console.error("Cascade failed:", error);
+            setError(error.message || "An unexpected error occurred");
+            playSound("error");
+        } finally {
+            setCascadeLoading(false);
+        }
+    };
+
     const startOrchestration = async () => {
         if (!task) return;
         setLoading(true);
@@ -339,14 +374,16 @@ export default function IntelligenceDashboard() {
         switch (mode) {
             case "hybrid": return "Describe what you want to build. I'll generate code while debating the best approach...";
             case "orchestrate": return "Describe a high-level business objective...";
+            case "cascade": return "Describe what you want 3 AI models to collaborate on...";
         }
     };
 
     const getButtonLabel = () => {
-        if (loading) return "Processing...";
+        if (loading || cascadeLoading) return "Processing...";
         switch (mode) {
             case "hybrid": return "Execute Dual-Track Analysis";
             case "orchestrate": return "Generate Admin Tasks";
+            case "cascade": return "Start Synthesis Cascade";
         }
     };
 
@@ -354,6 +391,7 @@ export default function IntelligenceDashboard() {
         switch (mode) {
             case "hybrid": return startHybrid();
             case "orchestrate": return startOrchestration();
+            case "cascade": return startCascade(task);
         }
     };
 
@@ -379,7 +417,13 @@ export default function IntelligenceDashboard() {
                                 onClick={() => setMode("hybrid")}
                                 className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "hybrid" ? "bg-zinc-800 text-white shadow-lg" : "text-zinc-600 hover:text-zinc-400"}`}
                             >
-                                Code + Strategy
+                                2-Model
+                            </button>
+                            <button
+                                onClick={() => setMode("cascade")}
+                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md transition-all ${mode === "cascade" ? "bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-orange-500/20 text-white shadow-lg border border-purple-500/30" : "text-zinc-600 hover:text-zinc-400"}`}
+                            >
+                                3-Model
                             </button>
                             <button
                                 onClick={() => setMode("orchestrate")}
@@ -644,6 +688,12 @@ export default function IntelligenceDashboard() {
                                     </div>
                                 </div>
                             </motion.div>
+                        ) : mode === "cascade" ? (
+                            <SynthesisCascadeView
+                                session={cascadeSession}
+                                loading={cascadeLoading}
+                                onStart={startCascade}
+                            />
                         ) : mode === "orchestrate" && orchestratedTasks.length > 0 ? (
                             <motion.div
                                 initial={{ opacity: 0, y: 10 }}

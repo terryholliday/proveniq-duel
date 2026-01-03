@@ -1,4 +1,4 @@
-export type ModelProvider = "gemini" | "openai";
+export type ModelProvider = "gemini" | "openai" | "claude";
 
 export interface Iteration {
     index: number;
@@ -86,10 +86,68 @@ export interface RatingResult {
 }
 
 export interface IntelligenceConfig {
-    geminiModel?: string; // e.g. "gemini-3"
-    openaiModel?: string; // e.g. "gpt-5.2"
+    geminiModel?: string; // e.g. "gemini-2.5-pro"
+    openaiModel?: string; // e.g. "gpt-4o"
+    claudeModel?: string; // e.g. "claude-sonnet-4-20250514"
     temperature?: number;
     maxIterations?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SYNTHESIS CASCADE TYPES (3-Model Architecture)
+// ═══════════════════════════════════════════════════════════════
+
+export interface CascadeConfig {
+    geminiModel: string;
+    openaiModel: string;
+    claudeModel: string;
+    temperature: number;
+    maxValidationRounds: number;
+}
+
+export type CascadePhase = "generation" | "critique" | "synthesis" | "validation" | "complete" | "error";
+
+export interface ModelOutput {
+    provider: ModelProvider;
+    model: string;
+    content: string;
+    timestamp: string;
+    latencyMs: number;
+}
+
+export interface CritiqueOutput extends ModelOutput {
+    targetProviders: ModelProvider[]; // Who this critique is about
+    strengths: string[];
+    weaknesses: string[];
+}
+
+export interface ValidationVote {
+    provider: ModelProvider;
+    model: string;
+    accept: boolean;
+    reasoning: string;
+    timestamp: string;
+}
+
+export interface CascadeRound {
+    index: number;
+    phase: CascadePhase;
+    generations?: ModelOutput[];
+    critiques?: CritiqueOutput[];
+    synthesis?: ModelOutput;
+    votes?: ValidationVote[];
+    synthesizer?: ModelProvider;
+}
+
+export interface CascadeSession {
+    id: string;
+    topic: string;
+    rounds: CascadeRound[];
+    status: "running" | "completed" | "error";
+    finalOutput?: string;
+    consensusReached: boolean;
+    totalLatencyMs: number;
+    error?: string;
 }
 
 export interface DuelTurn {

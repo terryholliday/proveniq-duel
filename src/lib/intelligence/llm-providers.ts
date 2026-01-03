@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { ModelProvider } from "./types";
 
 export abstract class LLMProvider {
@@ -70,5 +71,39 @@ export class GeminiProvider extends LLMProvider {
         const elapsed = Date.now() - startTime;
         console.log(`[Gemini] Completed in ${elapsed}ms`);
         return result.response.text();
+    }
+}
+
+export class ClaudeProvider extends LLMProvider {
+    private client: Anthropic;
+    private model: string;
+    private temperature: number;
+
+    constructor(model: string, temperature: number) {
+        super();
+        this.client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
+        this.model = model;
+        this.temperature = temperature;
+    }
+
+    async call(systemInstruction: string, userPayload: string): Promise<string> {
+        console.log(`[Claude] Starting call with model: ${this.model}`);
+        const startTime = Date.now();
+        
+        const response = await this.client.messages.create({
+            model: this.model,
+            max_tokens: 8192,
+            system: systemInstruction,
+            messages: [
+                { role: "user", content: userPayload }
+            ],
+        });
+
+        const elapsed = Date.now() - startTime;
+        console.log(`[Claude] Completed in ${elapsed}ms`);
+        
+        // Extract text from content blocks
+        const textContent = response.content.find(block => block.type === "text");
+        return textContent?.type === "text" ? textContent.text : "";
     }
 }
